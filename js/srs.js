@@ -60,10 +60,14 @@ export function newSession(profileId, topicId, mode) {
   return { id, profileId, topicId, mode, start: Date.now(), end: Date.now(), answers: 0, right: 0, wrong: 0, words: [] };
 }
 
-export function logAnswer(session, vocabId, ok) {
+// mode: the exercise the answer was given in (a round can mix words and sentences).
+export function logAnswer(session, vocabId, ok, mode = session.mode) {
   session.end = Date.now();
   session.answers++;
   if (ok) session.right++; else session.wrong++;
+  session.byMode ??= {};
+  const m = (session.byMode[mode] ??= { right: 0, wrong: 0 });
+  if (ok) m.right++; else m.wrong++;
   if (!session.words.includes(vocabId)) session.words.push(vocabId);
   return db.put('sessions', session);
 }
@@ -142,3 +146,41 @@ export const daysUntil = (t) => Math.round((startOfDay(t) - startOfDay(Date.now(
 
 // School year starts in September: Oct 2026 → 2026, March 2027 → 2026.
 export const schoolYear = (t = Date.now()) => { const d = new Date(t); return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; };
+
+// ---- Per exercise type ----------------------------------------------
+
+// Answers and hit rate per mode over the last `days` days, plus the rate of
+// the 7 days before that week for a trend. Older sessions without byMode count
+// under their session mode.
+export function modeStats(sessions, days = 30) {
+  const now = Date.now();
+  const out = new Map();
+  for (const s of sessions) {
+    const age = (now - s.start) / DAY;
+    if (age > days) continue;
+    const parts = s.byMode ?? { [s.mode]: { right: s.right, wrong: s.wrong } };
+    for (const [mode, c] of Object.entries(parts)) {
+      const row = out.get(mode) ?? { mode, right: 0, wrong: 0, week: [0, 0], before: [0, 0] };
+      row.right += c.right; row.wrong += c.wrong;
+      const bucket = age <= 7 ? row.week : age <= 14 ? row.before : null;
+      if (bucket) { bucket[0] += c.right; bucket[1] += c.right + c.wrong; }
+      out.set(mode, row);
+    }
+  }
+  return [...out.values()].map((r) => ({
+    ...r,
+    answers: r.right + r.wrong,
+    rate: Math.round((r.right / Math.max(1, r.right + r.wrong)) * 100),
+    trend: r.week[1] >= 5 && r.before[1] >= 5 ? Math.round((r.week[0] / r.week[1] - r.before[0] / r.before[1]) * 100) : null,
+  }));
+}
+
+// The exercise type that needs practice: tried at least 10 times, under 80 %,
+// and clearly behind the best one.
+export function weakestMode(stats) {
+  const tried = stats.filter((s) => s.answers >= 10);
+  if (!tried.length) return null;
+  const best = Math.max(...tried.map((s) => s.rate));
+  const weak = tried.filter((s) => s.rate < 80).sort((a, b) => a.rate - b.rate)[0];
+  return weak && (tried.length === 1 || best - weak.rate >= 10) ? weak : null;
+}

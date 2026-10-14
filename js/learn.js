@@ -429,7 +429,8 @@ export async function runSession(view, opts) {
       if (opts.exam) known++;
       else queue.splice(Math.min(3, queue.length), 0, w);
     }
-    await Promise.all([srs.logAnswer(session, w.id, ok), db.put('progress', p)]);
+    const asked = isSentence(w) ? 'sentences' : mode === 'sentences' ? 'choice' : mode;
+    await Promise.all([srs.logAnswer(session, w.id, ok, asked), db.put('progress', p)]);
     busy = false;
     if (queue.length) render(); else finish();
   }

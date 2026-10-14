@@ -7,6 +7,7 @@ import { esc, plain, STAGES, classLabel } from './util.js';
 import { saveFile } from './io.js';
 import { examsSection, examReport } from './exams.js';
 import { isSentenceId } from './sentences.js';
+import { MODES } from './learn.js';
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const fmtDate = (t) => new Date(t).toLocaleDateString('de-AT', { day: 'numeric', month: 'numeric' });
@@ -97,6 +98,11 @@ function reportText(p, s, topics, problems) {
     ...(s.sentencesSeen ? [`Sätze: ${s.sentencesSeen} geübt, ${s.sentencesLearned} richtig gebaut oder gewählt.`] : []),
     s.due ? `Zum Wiederholen fällig: ${pl(s.due, 'Wort', 'Wörter')}.` : 'Keine Wörter überfällig.',
   ];
+  const ms = srs.modeStats(s.sessions).filter((r) => r.answers);
+  if (ms.length) {
+    lines.push('', 'Übungsarten (30 Tage):');
+    for (const r of ms) lines.push(`- ${MODES.find((m) => m.id === r.mode)?.name ?? r.mode}: ${r.rate} % richtig (${pl(r.answers, 'Antwort', 'Antworten')})`);
+  }
   if (topics.length) {
     lines.push('', 'Themen:');
     for (const r of topics) lines.push(`- ${r.t.title} (${classLabel(r.t.grade)}): ${r.learned}/${r.total} gelernt ${'★'.repeat(r.stars)}${r.task ? ' [Aufgabe]' : ''}`);
@@ -119,7 +125,7 @@ export async function childView(ctx, id) {
   const recent = s.sessions.slice(-8).reverse();
   const topicNames = new Map((await db.all('topics')).map((t) => [t.id, t.title]));
   const goal = p.dailyGoal || profiles.DEFAULT_GOAL;
-  const modeName = { cards: 'Karteikarten', choice: 'Auswählen', write: 'Schreiben' };
+  const modeName = Object.fromEntries(MODES.map((m) => [m.id, m.name]));
 
   view.innerHTML = `
     <p class="lead">${classLabel(p.grade)} <a class="link-btn" href="#/parents/child/${encodeURIComponent(p.id)}/edit">Klasse ändern</a><br>${s.last ? `zuletzt gelernt ${fmtDateTime(s.last)}` : 'hat noch nicht gelernt'}</p>
@@ -132,6 +138,9 @@ export async function childView(ctx, id) {
     </div>
 
     ${await examsSection(p, ctx.lang)}
+
+    ${modeSection(srs.modeStats(s.sessions))}
+    ${p.taskMode ? `<p class="hint">📌 Vorgegebene Übungsart: <b>${MODES.find((m) => m.id === p.taskMode)?.name ?? ''}</b> (unter „Aufgaben“ änderbar)</p>` : ''}
 
     <section class="card">
       <h2>Antworten pro Tag</h2>
@@ -189,6 +198,27 @@ export async function childView(ctx, id) {
   };
 }
 
+// Hit rate per exercise type (last 30 days), weakest one marked.
+export function modeSection(stats, who = 'das Kind') {
+  const weak = srs.weakestMode(stats);
+  const byId = new Map(stats.map((r) => [r.mode, r]));
+  const rows = MODES.map((m) => ({ m, r: byId.get(m.id) })).filter(({ r }) => r?.answers);
+  return `
+    <section class="card">
+      <h2>Übungsarten <small class="hint">letzte 30 Tage</small></h2>
+      ${rows.length ? `<ul class="topic-progress modes-stats">
+        ${rows.map(({ m, r }) => `
+          <li${weak?.mode === m.id ? ' class="weak"' : ''}>
+            <span class="tp-name">${m.icon} ${m.name} <small>${pl(r.answers, 'Antwort', 'Antworten')}${r.trend !== null ? ` · ${r.trend > 0 ? '↗' : r.trend < 0 ? '↘' : '→'} ${r.trend > 0 ? '+' : ''}${r.trend} % zur Vorwoche` : ''}</small></span>
+            <span class="tp-bar"><span style="width:${r.rate}%"></span></span>
+            <span class="tp-num">${r.rate} %</span>
+          </li>`).join('')}
+      </ul>
+      ${weak ? `<p class="hint">👉 <b>${MODES.find((m) => m.id === weak.mode)?.name}</b> klappt erst zu ${weak.rate} %. Das sollte ${who} öfter üben.</p>` : '<p class="hint">Keine Übungsart fällt deutlich ab.</p>'}`
+      : '<p class="hint">Noch keine Antworten in den letzten 30 Tagen.</p>'}
+    </section>`;
+}
+
 async function shareText(name, text) {
   if (navigator.share) {
     try { await navigator.share({ title: name.replace(/\.txt$/, ''), text }); return; }
@@ -210,6 +240,15 @@ export async function tasksView(ctx, id) {
   view.innerHTML = `
     <p class="hint">Gewählte Themen erscheinen bei ${esc(p.name)} ganz oben als „📌 Aufgaben“, z. B. für die nächste Schularbeit.</p>
     <form class="form">
+      <section class="card form">
+        <label class="field"><span>Übungsart vorgeben</span>
+          <select name="taskMode">
+            <option value="">Keine, das Kind wählt selbst</option>
+            ${MODES.map((m) => `<option value="${m.id}"${p.taskMode === m.id ? ' selected' : ''}>${m.icon} ${m.name}</option>`).join('')}
+          </select>
+        </label>
+        <p class="hint">Die Übungsart wird bei ${esc(p.name)} eingestellt und auf der Startseite als Aufgabe angezeigt.</p>
+      </section>
       ${grades.map((g) => {
         const list = topics.filter((t) => t.grade === g).sort((a, b) => a.title.localeCompare(b.title, 'de'));
         if (!list.length) return '';
@@ -225,6 +264,8 @@ export async function tasksView(ctx, id) {
   view.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();
     p.tasks = [...view.querySelectorAll('input[name=t]:checked')].map((el) => el.value);
+    p.taskMode = e.target.taskMode.value || null;
+    if (p.taskMode) p.mode = p.taskMode;
     await profiles.save(p);
     await ctx.refresh();
     location.hash = `#/parents/child/${encodeURIComponent(id)}`;

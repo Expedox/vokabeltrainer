@@ -469,3 +469,6 @@ mark.good { background: color-mix(in srgb, #3fae5a 28%, transparent); color: inh
 .options.sentence-options { grid-template-columns: 1fr; }
 .option.is-right mark.good, .option.is-wrong mark.bad { background: rgba(255, 255, 255, .3); }
 .tiles[hidden], .row.center[hidden] { display: none; }
+.nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; margin: 12px 0; }
+.modes-stats li.weak .tp-name { font-weight: 800; }
+.modes-stats li.weak .tp-bar span { background: #e5534b; }

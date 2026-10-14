@@ -131,6 +131,9 @@ async function homeView() {
   const learned = (await srs.allProgress(p.id)).filter(srs.isLearned).length;
   const tasks = (await Promise.all((p.tasks || []).map((id) => db.get('topics', id)))).filter(Boolean);
   const mine = sortTopics(await db.topicsFor(state.lang, p.grade));
+  const weak = srs.weakestMode(srs.modeStats(await srs.sessionsFor(p.id)));
+  const weakMode = weak && weak.mode !== p.mode && !p.taskMode ? MODES.find((m) => m.id === weak.mode) : null;
+  const taskMode = p.taskMode && MODES.find((m) => m.id === p.taskMode);
   const hello = p.grade <= 4 ? `Hallo ${esc(p.name)}! 👋` : `Hi ${esc(p.name)}!`;
   view.innerHTML = `
     <div class="hello">
@@ -145,6 +148,11 @@ async function homeView() {
       <div class="stat"><span class="stat-big">🔥 ${streak}</span><span>${streak === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
       <div class="stat"><span class="stat-big">📚 ${learned}</span><span>Wörter gelernt</span></div>
     </div>
+    ${taskMode ? `<p class="card nudge">📌 Aufgabe: Übe mit <b>${taskMode.icon} ${taskMode.name}</b>.</p>` : ''}
+    ${weakMode ? `<div class="card nudge">
+      <span>${weakMode.icon} <b>${weakMode.name}</b> klappt erst zu ${weak.rate} %. Heute ${weakMode.name} üben?</span>
+      <button class="btn primary" id="take-weak" data-mode="${weakMode.id}">Ja, ${weakMode.name}</button>
+    </div>` : ''}
     <h3 class="section">So übe ich</h3>
     ${modePicker(p)}
     ${(await Promise.all(exams.upcoming(p).map(async (e) => {
@@ -176,6 +184,11 @@ async function homeView() {
     <a class="btn more-link" href="#/grades">Andere Klasse ansehen</a>
   `;
   wireModePicker();
+  view.querySelector('#take-weak')?.addEventListener('click', async (e) => {
+    p.mode = e.target.dataset.mode;
+    await profiles.save(p);
+    homeView();
+  });
 }
 
 async function gradesView() {
