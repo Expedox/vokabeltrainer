@@ -107,7 +107,7 @@ async function welcomeView(first) {
     const adult = form.who.value === 'adult';
     form.querySelector('#grade-label').textContent = adult ? 'Dein Englisch-Niveau' : 'Deine Klasse';
     form.grade.innerHTML = adult
-      ? `<option value="test">Weiß ich nicht: kurzer Einstufungstest</option>${ADULT_STAGE.grades.map((g) => `<option value="${g}">${LEVELS[g]} ${['Anfänger', 'Grundkenntnisse', 'Mittelstufe', 'Gute Mittelstufe'][g - 21]}</option>`).join('')}`
+      ? `<option value="test">Weiß ich nicht: kurzer Einstufungstest</option>${ADULT_STAGE.grades.map((g) => `<option value="${g}">${LEVELS[g]} ${['Anfänger', 'Grundkenntnisse', 'Mittelstufe', 'Gute Mittelstufe, UNIcert II'][g - 21]}</option>`).join('')}`
       : KID_STAGES.map((s) => `<optgroup label="${s.name}">${s.grades.map((g) => `<option value="${g}">${classLabel(g)}</option>`).join('')}</optgroup>`).join('');
   };
   fillGrades();

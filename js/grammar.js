@@ -13,6 +13,8 @@ async function chapters(lang) {
 }
 
 const metaKey = (p) => `grammar:${p.id}`;
+// A chapter is due again when the last round was under 80 % or a week ago.
+const due = (r) => r.last < 80 || Date.now() - r.at > 7 * 864e5;
 const norm = (s) => String(s).toLowerCase().replace(/[’`´]/g, "'").replace(/[.!?]+$/, '').replace(/\s+/g, ' ').trim();
 const say = (text) => (canSpeak() ? ` <button class="speak-note" data-say="${esc(text)}" aria-label="Vorlesen">🔊</button>` : '');
 const wireSay = (root) => root.querySelectorAll('[data-say]').forEach((b) => { b.onclick = () => speak(b.dataset.say); });
@@ -31,7 +33,7 @@ export async function grammarListView(ctx, p) {
         return `<li><a href="#/grammar/${encodeURIComponent(c.id)}">
           <span class="tp-name">${esc(c.title_de)}</span>
           <span class="tp-bar"><span style="width:${r?.best ?? 0}%"></span></span>
-          <span class="tp-num">${r ? `${r.best} %` : 'neu'}</span></a></li>`;
+          <span class="tp-num">${!r ? 'neu' : due(r) ? `${r.last} % · wiederholen` : `${r.best} %`}</span></a></li>`;
       }).join('')}
     </ul>`).join('') : '<p class="empty">Noch keine Grammatik-Kapitel.</p>';
 }
@@ -59,14 +61,27 @@ function run(ctx, p, c) {
   const { view } = ctx;
   const session = srs.newSession(p.id, null, 'grammar');
   session.label = `📐 Grammatik: ${c.title_de}`;
+  // Every exercise once; the missed ones come back at the end until right.
+  const queue = c.exercises.map((ex, n) => ({ ex, n }));
+  const total = queue.length;
+  const missed = new Set();
   let i = 0;
   let right = 0;
 
-  const next = () => { i++; if (i < c.exercises.length) ask(); else finish(); };
+  const next = () => {
+    const cur = queue.shift();
+    if (lastOk === false) queue.push(cur);
+    i++;
+    if (queue.length) ask(); else finish();
+  };
+  let lastOk = null;
 
-  const settle = (ok, ex, given) => {
-    if (ok) right++;
-    srs.logAnswer(session, `g:${c.id}:${i}`, ok, 'grammar');
+  const settle = (ok, ex) => {
+    const { n } = queue[0];
+    lastOk = ok;
+    if (ok && !missed.has(n)) right++;
+    if (!ok) missed.add(n);
+    srs.logAnswer(session, `g:${c.id}:${n}`, ok, 'grammar');
     const solution = ex.type === 'choice' ? ex.options[ex.answer] : ex.answer;
     const box = view.querySelector('.feedback');
     box.className = `feedback ${ok ? 'ok' : 'no'}`;
@@ -81,11 +96,12 @@ function run(ctx, p, c) {
   };
 
   const ask = () => {
-    const ex = c.exercises[i];
+    const { ex, n } = queue[0];
+    const again = missed.has(n);
     view.innerHTML = `
       <div class="learn">
-        <div class="progress"><div class="bar" style="width:${(i / c.exercises.length) * 100}%"></div></div>
-        <p class="counter">Übung ${i + 1} von ${c.exercises.length}</p>
+        <div class="progress"><div class="bar" style="width:${(Math.min(i, total) / total) * 100}%"></div></div>
+        <p class="counter">${again ? `Wiederholung · noch ${queue.length}` : `Übung ${i + 1} von ${total}`}</p>
         <div class="prompt-card sentence-card">
           <span class="de-sentence">${esc(ex.prompt)}</span>
           ${ex.type === 'transform' ? '<p class="hint">Schreib den ganzen Satz um.</p>' : ''}
@@ -131,7 +147,8 @@ function run(ctx, p, c) {
   };
 
   const finish = async () => {
-    const pct = Math.round((right / c.exercises.length) * 100);
+    // Score = right at the first try.
+    const pct = Math.round((right / total) * 100);
     const all = (await db.getMeta(metaKey(p), {})) ?? {};
     all[c.id] = { best: Math.max(pct, all[c.id]?.best ?? 0), last: pct, at: Date.now() };
     await db.setMeta(metaKey(p), all);
@@ -139,7 +156,7 @@ function run(ctx, p, c) {
       <div class="learn done">
         <div class="result-emoji" aria-hidden="true">✓</div>
         <h2>${pct >= 80 ? 'Sitzt.' : 'Kapitel beendet.'}</h2>
-        <p class="lead">${right} von ${c.exercises.length} richtig (${pct} %)</p>
+        <p class="lead">${right} von ${total} beim ersten Versuch richtig (${pct} %)</p>
         <p class="hint">${pct >= 80 ? 'Gut. Wiederhole das Kapitel in ein paar Tagen.' : 'Lies die Erklärung noch einmal und mach die Übungen erneut.'}</p>
         <div class="stack">
           <button class="btn primary" id="again">Nochmal</button>

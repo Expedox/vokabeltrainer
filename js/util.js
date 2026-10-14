@@ -34,7 +34,7 @@ export const stageOf = (grade) => STAGES.find((s) => s.grades.includes(grade));
 // Grade 1–4 count as Volksschule classes 1–4, 5–8 as class 1–4 Unterstufe,
 // 9–12 as class 5–8 AHS. Kids know their class, not the Schulstufe.
 export function classLabel(grade) {
-  if (isAdult(grade)) return `Niveau ${LEVELS[grade]}`;
+  if (isAdult(grade)) return `Niveau ${LEVELS[grade]}${grade === 24 ? ' (UNIcert II)' : ''}`;
   if (grade <= 4) return `${grade}. Klasse VS`;
   if (grade <= 8) return `${grade - 4}. Klasse`;
   return `${grade - 4}. Klasse AHS`;
