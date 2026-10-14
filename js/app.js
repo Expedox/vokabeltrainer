@@ -102,7 +102,8 @@ async function welcomeView(first) {
         <select name="grade"></select>
       </label>
       <button class="btn primary">Los geht's</button>
-    </form>`;
+    </form>
+    <a class="btn more-link help-link" href="anleitung.pdf" target="_blank" rel="noopener">📖 Anleitung (PDF)</a>`;
   const form = view.querySelector('form');
   const fillGrades = () => {
     const adult = form.who.value === 'adult';
@@ -219,6 +220,7 @@ async function homeView() {
       <a class="btn" href="#/placement">🧭 Niveau prüfen (Einstufungstest)</a>
     </div>` : ''}
     <a class="btn more-link" href="#/grades">${adult ? 'Anderes Niveau ansehen' : 'Andere Klasse ansehen'}</a>
+    <a class="btn more-link help-link" href="anleitung.pdf" target="_blank" rel="noopener">📖 Anleitung (PDF)</a>
   `;
   wireModePicker();
   view.querySelector('#take-weak')?.addEventListener('click', async (e) => {
@@ -575,6 +577,7 @@ async function settingsView() {
     </section>
     <a class="btn more-link" href="#/profiles">👥 Benutzer wechseln</a>
     ${isAdult(p.grade) ? '' : '<a class="btn more-link parents-link" href="#/parents">🔒 Elternbereich</a>'}
+    <a class="btn more-link help-link" href="anleitung.pdf" target="_blank" rel="noopener">📖 Anleitung (PDF)</a>
   `;
   view.querySelector('select[name=level]')?.addEventListener('change', async (e) => { p.grade = Number(e.target.value); await profiles.save(p); });
   view.querySelector('select[name=minutes]')?.addEventListener('change', async (e) => { p.dailyMinutes = Number(e.target.value); await profiles.save(p); });
