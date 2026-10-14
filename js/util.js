@@ -23,7 +23,7 @@ export const gradesBelow = (grade) => (isAdult(grade)
   : Array.from({ length: grade - 1 }, (_, i) => i + 1));
 
 export const THEMES = [
-  { id: 'auto', name: 'Automatisch', hint: 'passt sich der Schulstufe an' },
+  { id: 'auto', name: 'Automatisch', hint: 'passt sich Klasse oder Niveau an' },
   { id: 'kids', name: 'Kindlich', hint: 'bunt und verspielt' },
   { id: 'teen', name: 'Jugendlich', hint: 'frisch, ohne Kinderkram' },
   { id: 'adult', name: 'Erwachsen', hint: 'ruhig und schlicht' },

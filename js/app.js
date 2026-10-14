@@ -91,7 +91,7 @@ async function welcomeView(first) {
     <form class="card form welcome" autocomplete="off">
       ${first ? '<p class="lead">Schön, dass du da bist! Wer lernt hier?</p>' : ''}
       <label class="field"><span>Vorname</span><input name="name" required maxlength="20" placeholder="z. B. Lena"></label>
-      <div class="field"><span>Wähle dein Tier</span>
+      <div class="field"><span>Wähle dein Bild</span>
         <div class="avatars">${profiles.AVATARS.map((a, i) => `<button type="button" class="avatar${i ? '' : ' on'}" data-a="${a}" aria-label="${a}">${a}</button>`).join('')}</div>
       </div>
       <div class="segmented" role="radiogroup" aria-label="Wer lernt?">
@@ -168,7 +168,7 @@ async function homeView() {
   const goalDone = adult ? minutes : today;
   view.innerHTML = `
     <div class="hello">
-      <a class="me" href="#/profiles" aria-label="Kind wechseln">${esc(p.avatar)}</a>
+      <a class="me" href="#/profiles" aria-label="Benutzer wechseln">${esc(p.avatar)}</a>
       <div>
         <h2>${hello}</h2>
         <p class="hint">${goalDone >= goal ? `Tagesziel geschafft!${adult ? '' : ' 🎉'}` : goalDone ? `Noch ${goal - goalDone} ${adult ? 'Minuten' : 'Antworten'} bis zum Tagesziel.` : 'Bereit für heute?'}</p>
@@ -573,7 +573,7 @@ async function settingsView() {
       </div>
       <p class="hint">Weitere Sprachen folgen.</p>
     </section>
-    <a class="btn more-link" href="#/profiles">👥 ${isAdult(p.grade) ? 'Profil' : 'Kind'} wechseln</a>
+    <a class="btn more-link" href="#/profiles">👥 Benutzer wechseln</a>
     ${isAdult(p.grade) ? '' : '<a class="btn more-link parents-link" href="#/parents">🔒 Elternbereich</a>'}
   `;
   view.querySelector('select[name=level]')?.addEventListener('change', async (e) => { p.grade = Number(e.target.value); await profiles.save(p); });
