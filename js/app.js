@@ -202,7 +202,8 @@ function wireModePicker() {
     state.profile.mode = el.value; profiles.save(state.profile);
   }));
   view.querySelectorAll('input[name=dir]').forEach((el) => el.addEventListener('change', () => {
-    state.profile.direction = el.value; profiles.save(state.profile);
+    state.profile.direction = el.value;
+    profiles.save(state.profile);
   }));
 }
 
@@ -229,17 +230,25 @@ async function topicView(topicId) {
       ${words.length ? `<a class="btn primary big" href="#/learn/${encodeURIComponent(topicId)}">Los geht's!</a>` : ''}
       ${repeat ? `<a class="btn" href="#/learn/${encodeURIComponent(topicId)}/repeat">↺ ${repeat} ${repeat === 1 ? 'Fehler' : 'Fehler'} wiederholen</a>` : ''}
     </div>
-    <ul class="wordlist">
-      ${words.map((w) => {
-        const pr = progress.get(w.id);
-        const mark = srs.needsRepeat(pr) ? '<span class="dot wrong" title="wiederholen"></span>'
-          : srs.isLearned(pr) ? '<span class="dot right" title="gelernt"></span>' : '<span class="dot"></span>';
-        return `<li>${mark}<span class="term">${esc(w.term)}</span><span class="trans">${esc(w.translation)}</span></li>`;
-      }).join('')}
-    </ul>
+    <ul class="wordlist" id="words"></ul>
     <p class="hint legend"><span class="dot right"></span> gelernt <span class="dot wrong"></span> wiederholen <span class="dot"></span> neu</p>
   `;
   wireModePicker();
+  // The list follows the chosen direction, so it previews what the cards will ask.
+  const list = view.querySelector('#words');
+  const drawList = () => {
+    const deEn = state.profile.direction === 'de-en';
+    const sorted = words.slice().sort((a, b) => (deEn ? a.translation.localeCompare(b.translation, 'de') : a.term.localeCompare(b.term, 'en')));
+    list.innerHTML = sorted.map((w) => {
+      const pr = progress.get(w.id);
+      const mark = srs.needsRepeat(pr) ? '<span class="dot wrong" title="wiederholen"></span>'
+        : srs.isLearned(pr) ? '<span class="dot right" title="gelernt"></span>' : '<span class="dot"></span>';
+      const [a, b] = deEn ? [w.translation, w.term] : [w.term, w.translation];
+      return `<li>${mark}<span class="term">${esc(a)}</span><span class="trans">${esc(b)}</span></li>`;
+    }).join('');
+  };
+  drawList();
+  view.querySelectorAll('input[name=dir]').forEach((el) => el.addEventListener('change', drawList));
 }
 
 async function finishExtra(topicId) {
