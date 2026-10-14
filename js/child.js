@@ -204,7 +204,7 @@ export async function childView(ctx, id) {
 export function modeSection(stats, who = 'das Kind') {
   const weak = srs.weakestMode(stats);
   const byId = new Map(stats.map((r) => [r.mode, r]));
-  const kinds = [...MODES, { id: 'grammar', icon: '📐', name: 'Grammatik' }];
+  const kinds = [...MODES, { id: 'grammar', icon: '📐', name: 'Grammatik' }, { id: 'dialog', icon: '✈️', name: 'Situationen' }];
   const rows = kinds.map((m) => ({ m, r: byId.get(m.id) })).filter(({ r }) => r?.answers);
   return `
     <section class="card">

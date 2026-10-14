@@ -9,6 +9,7 @@ import { isSentence } from './sentences.js';
 import * as exams from './exams.js';
 import { placementView } from './placement.js';
 import { grammarListView, grammarChapterView } from './grammar.js';
+import { dialogListView, dialogView } from './dialogs.js';
 import { selfStatsView } from './child.js';
 
 const state = { lang: 'en', profile: null };
@@ -212,6 +213,7 @@ async function homeView() {
     </a>` : ''}
     ${mine.length ? await topicTiles(mine) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
     ${adult ? `<div class="stack wide">
+      <a class="btn primary" href="#/dialogs">✈️ Situationen: Urlaub und Alltag</a>
       <a class="btn" href="#/grammar">📐 Grammatik</a>
       <a class="btn" href="#/stats">📊 Meine Statistik</a>
       <a class="btn" href="#/placement">🧭 Niveau prüfen (Einstufungstest)</a>
@@ -604,6 +606,8 @@ const routes = [
   [/^#\/placement$/, () => placementView({ view, setHeader, lang: state.lang, refresh: refreshProfile }, state.profile)],
   [/^#\/grammar$/, () => grammarListView({ view, setHeader, lang: state.lang }, state.profile)],
   [/^#\/grammar\/(.+)$/, (m) => grammarChapterView({ view, setHeader, lang: state.lang }, state.profile, decodeURIComponent(m[1]))],
+  [/^#\/dialogs$/, () => dialogListView({ view, setHeader, lang: state.lang }, state.profile)],
+  [/^#\/dialog\/(.+)$/, (m) => dialogView({ view, setHeader, lang: state.lang }, state.profile, decodeURIComponent(m[1]))],
   [/^#\/stats$/, () => selfStatsView({ view, setHeader, lang: state.lang }, state.profile)],
   [/^#\/mix\/(\d+)$/, (m) => mixView(Number(m[1]))],
   [/^#\/exam\/([^/]+)\/(prep|test)$/, (m) => examRunView(decodeURIComponent(m[1]), m[2])],

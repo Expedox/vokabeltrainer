@@ -139,6 +139,14 @@ def main():
     chapters.sort(key=lambda c: order.index(c['level']))
     with open(os.path.join(os.path.dirname(__file__), '..', 'data', f'grammar-{lang}.json'), 'w', encoding='utf-8') as f:
         json.dump({'chapters': chapters}, f, ensure_ascii=False)
+    # Situation dialogues: dialoge-A1.json … → data/dialogs-<lang>.json
+    situations = []
+    for path in sorted(glob.glob(os.path.join(adir, 'dialoge-*.json'))):
+        data = json.load(open(path, encoding='utf-8'))
+        situations += [{**x, 'level': data['level'].upper()} for x in data['situations']]
+    situations.sort(key=lambda x: order.index(x['level']))
+    with open(os.path.join(os.path.dirname(__file__), '..', 'data', f'dialogs-{lang}.json'), 'w', encoding='utf-8') as f:
+        json.dump({'situations': situations}, f, ensure_ascii=False)
     test = os.path.join(adir, 'einstufungstest.json')
     if os.path.exists(test):
         q = json.load(open(test, encoding='utf-8'))['questions']

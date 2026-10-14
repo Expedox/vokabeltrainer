@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v27';
+const VERSION = 'v28';
 const FILES = [
   './',
   'index.html',
@@ -10,6 +10,8 @@ const FILES = [
   'js/sentences.js',
   'js/placement.js',
   'js/grammar.js',
+  'js/dialogs.js',
+  'data/dialogs-en.json',
   'data/grammar-en.json',
   'data/placement-en.json',
   'js/db.js',

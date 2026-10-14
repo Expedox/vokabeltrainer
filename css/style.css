@@ -476,3 +476,16 @@ mark.good { background: color-mix(in srgb, #3fae5a 28%, transparent); color: inh
 .done .topic-progress { width: 100%; text-align: left; }
 .explain { line-height: 1.55; white-space: pre-line; }
 .grammar-list a { display: contents; color: inherit; text-decoration: none; }
+
+/* ---- Dialogues ---- */
+.dialog { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dialog .line { position: relative; max-width: 86%; padding: 10px 40px 10px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.dialog .line.you { align-self: flex-end; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.dialog .line.playing { outline: 3px solid var(--accent); }
+.dialog .who { font-size: .75em; color: var(--muted); font-weight: 700; }
+.dialog .en { font-weight: 700; }
+.dialog .de { font-size: .9em; color: var(--muted); }
+.dialog .speak-note { position: absolute; right: 8px; top: 8px; }
+.dialog.hide-text .en, .dialog.hide-text .de { filter: blur(6px); }
+.listen-card { flex-direction: column; gap: 10px; }
+.listen-text { font-size: clamp(1.2rem, 5.5vw, 1.8rem); }

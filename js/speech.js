@@ -12,7 +12,8 @@ function pickVoice(lang) {
 
 export const canSpeak = () => 'speechSynthesis' in window;
 
-export function speak(text, lang = 'en-GB') {
+// rate: 0.9 normal, about 0.6 for "slower please".
+export function speak(text, lang = 'en-GB', rate = 0.9) {
   if (!canSpeak() || !text) return;
   speechSynthesis.cancel();
   // "der Hund / die Hündin" → read the first variant only.
@@ -20,14 +21,14 @@ export function speak(text, lang = 'en-GB') {
   voice = pickVoice(lang) ?? voice;
   if (voice) u.voice = voice;
   u.lang = lang;
-  u.rate = 0.9;
+  u.rate = rate;
   speechSynthesis.speak(u);
 }
 
 if (canSpeak()) speechSynthesis.onvoiceschanged = () => { voice = undefined; };
 
 // Several texts in a row (word, sentence, word) with a short pause between.
-export function speakAll(texts, lang = 'en-GB') {
+export function speakAll(texts, lang = 'en-GB', rate) {
   if (!canSpeak()) return;
   speechSynthesis.cancel();
   voice = pickVoice(lang) ?? voice;
@@ -35,7 +36,7 @@ export function speakAll(texts, lang = 'en-GB') {
     const u = new SpeechSynthesisUtterance(i === 1 ? text : text.split(/[/;]/)[0].trim());
     if (voice) u.voice = voice;
     u.lang = lang;
-    u.rate = i === 1 ? 0.85 : 0.8;
+    u.rate = rate ?? (i === 1 ? 0.85 : 0.8);
     speechSynthesis.speak(u);
   });
 }

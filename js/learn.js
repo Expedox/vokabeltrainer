@@ -4,6 +4,7 @@
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
 //   sentences – pick the right English sentence out of four, later build it from tiles
+//   listen – the English word or sentence is only read out; pick its meaning
 // Sentence items (kind: 'sentence') are always shown as sentence exercises,
 // e.g. when they turn up in "Heute wiederholen".
 // Missed words come back a few cards later in the same round. The round ends
@@ -24,6 +25,7 @@ export const MODES = [
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
   { id: 'sentences', name: 'Sätze', icon: '💬', hint: 'Richtigen Satz finden, dann selbst bauen', english: true },
+  { id: 'listen', name: 'Hören', icon: '👂', hint: 'Nur hören, dann die Bedeutung wählen', english: true },
 ];
 
 const PRAISE = {
@@ -76,7 +78,9 @@ function confetti(host) {
  * pool: extra words used as wrong options in choice mode.
  */
 export async function runSession(view, opts) {
-  const { profile, words, mode, direction, onExit } = opts;
+  const { profile, words, mode, onExit } = opts;
+  // Spelling, sentences and listening always go from English to German.
+  const direction = MODES.find((m) => m.id === mode)?.english ? 'en-de' : opts.direction;
   if (!words.length) {
     view.innerHTML = `<p class="empty">${mode === 'sentences' ? 'Hier gibt es noch keine Sätze zum Üben.' : 'Keine Wörter für diese Runde.'}</p>`;
     return;
@@ -131,7 +135,8 @@ export async function runSession(view, opts) {
   function render() {
     answered = false;
     const w = queue[0];
-    if (isSentence(w)) {
+    if (mode === 'listen' && canSpeak()) renderListen(w);
+    else if (isSentence(w)) {
       // New or just missed: pick from four. Known once: build it from tiles.
       if (progress.get(w.id).box >= 1 && tokens(w.term).length <= 14) renderBuild(w); else renderPick(w);
     } else if (mode === 'choice' || mode === 'sentences') renderChoice(w);
@@ -314,6 +319,50 @@ export async function runSession(view, opts) {
     keys = {};
   }
 
+  // ---- listen ----
+  // Only heard, not shown: pick the German meaning. Replay normal or slow.
+  function renderListen(w) {
+    const meaning = (v) => (isSentence(v) ? v.translation : plain(v.translation, 'de'));
+    const others = shuffle([...words, ...(opts.pool ?? [])].filter((o) => o.id !== w.id && isSentence(o) === isSentence(w) && meaning(o) !== meaning(w)));
+    const options = [];
+    for (const o of others) {
+      if (options.length === 3) break;
+      if (!options.some((x) => meaning(x) === meaning(o))) options.push(o);
+    }
+    options.push(w);
+    shuffle(options);
+    frame(`
+      <div class="prompt-card listen-card">
+        ${pic(w)}
+        <div class="row center">
+          <button class="btn primary" id="again">🔊 Nochmal</button>
+          <button class="btn" id="slow">🐢 Langsam</button>
+        </div>
+        <span class="word listen-text" hidden>${esc(isSentence(w) ? w.term : plain(w.term, 'en'))}</span>
+      </div>
+      <p class="hint center">Was bedeutet das?</p>
+      <div class="options${isSentence(w) ? ' sentence-options' : ''}">
+        ${options.map((o) => `<button class="btn option" data-id="${esc(o.id)}">${esc(meaning(o))}</button>`).join('')}
+      </div>
+      <div class="feedback" hidden></div>`);
+    view.querySelector('#again').onclick = () => speak(w.term);
+    view.querySelector('#slow').onclick = () => speak(w.term, 'en-GB', 0.6);
+    speak(w.term);
+    const choose = (btn) => {
+      if (answered) return;
+      const ok = btn.dataset.id === w.id;
+      view.querySelectorAll('.option').forEach((b) => {
+        b.disabled = true;
+        if (b.dataset.id === w.id) b.classList.add('is-right');
+      });
+      if (!ok) btn.classList.add('is-wrong');
+      view.querySelector('.listen-text').hidden = false;
+      feedback(ok, w);
+    };
+    view.querySelectorAll('.option').forEach((b) => { b.onclick = () => choose(b); });
+    keys = { pick: (n) => { const b = view.querySelectorAll('.option')[n]; if (b) choose(b); } };
+  }
+
   // ---- sentences ----
   let given = '';
   let why = '';
@@ -445,7 +494,7 @@ export async function runSession(view, opts) {
       if (opts.exam) known++;
       else queue.splice(Math.min(3, queue.length), 0, w);
     }
-    const asked = isSentence(w) ? 'sentences' : mode === 'sentences' ? 'choice' : mode;
+    const asked = mode === 'listen' && canSpeak() ? 'listen' : isSentence(w) ? 'sentences' : mode === 'sentences' || mode === 'listen' ? 'choice' : mode;
     await Promise.all([srs.logAnswer(session, w.id, ok, asked), db.put('progress', p)]);
     busy = false;
     if (queue.length) render(); else finish();
