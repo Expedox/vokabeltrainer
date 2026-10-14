@@ -4,7 +4,7 @@
 import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, LEVELS } from './util.js';
-import { speak, canSpeak } from './speech.js';
+import { speak, canSpeak, speechText } from './speech.js';
 
 const SLOW = 0.6;
 const NORMAL = 0.9;
@@ -24,7 +24,7 @@ function playLines(lines, rate, onLine) {
     const nextLine = () => {
       if (stopped || i >= lines.length) { onLine(-1); resolve(); return; }
       onLine(i);
-      const u = new SpeechSynthesisUtterance(lines[i].en);
+      const u = new SpeechSynthesisUtterance(speechText(lines[i].en));
       u.lang = 'en-GB';
       u.rate = rate;
       // A slightly different pitch tells the two speakers apart.
