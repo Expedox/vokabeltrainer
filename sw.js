@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const FILES = [
   './',
   'index.html',
@@ -38,7 +38,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: revalidate with the server so a new release shows up on the
+    // next start instead of after GitHub's 10-minute cache expires.
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));
