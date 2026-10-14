@@ -1,5 +1,7 @@
 import * as db from './db.js';
 import { LANGUAGES, seed } from './seed.js';
+import { esc } from './util.js';
+import { runSession, progressFor, needsRepeat } from './learn.js';
 
 export const STAGES = [
   { id: 'vs', name: 'Volksschule', short: 'VS', grades: [1, 2, 3, 4], theme: 'kids' },
@@ -28,10 +30,6 @@ const state = { lang: 'en', grade: null, theme: 'auto' };
 const view = document.getElementById('view');
 const titleEl = document.getElementById('title');
 const backBtn = document.getElementById('back-btn');
-
-export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[c]));
 
 function applyTheme() {
   const t = state.theme === 'auto' ? (stageOf(state.grade ?? 1).theme) : state.theme;
@@ -94,26 +92,46 @@ async function topicView(topicId) {
   if (!topic) { location.hash = '#/'; return; }
   if (state.grade !== topic.grade) { state.grade = topic.grade; applyTheme(); }
   const words = (await db.vocabFor(topicId)).sort((a, b) => a.term.localeCompare(b.term, 'en'));
+  const progress = await progressFor(words);
+  const repeat = words.filter((w) => needsRepeat(progress.get(w.id))).length;
+  const learned = words.filter((w) => progress.get(w.id).box >= 1).length;
+  const direction = await db.getMeta('direction', 'en-de');
+  const href = (mode) => `#/learn/${encodeURIComponent(topicId)}/${mode}`;
   setHeader(topic.title, `#/grade/${topic.grade}`);
   view.innerHTML = `
     <div class="topic-head">
       <span class="emoji big-emoji" aria-hidden="true">${esc(topic.icon || '📘')}</span>
-      <div>
-        <p class="lead">${words.length} Wörter</p>
-        <a class="btn primary" href="#/learn/${encodeURIComponent(topicId)}">Lernen starten</a>
+      <div class="stack">
+        <p class="lead">${words.length} Wörter · ${learned} gelernt</p>
+        ${words.length ? `<a class="btn primary" href="${href('all')}">Lernen starten</a>` : ''}
+        ${repeat ? `<a class="btn" href="${href('repeat')}">↺ ${repeat} Fehler wiederholen</a>` : ''}
       </div>
     </div>
+    <div class="segmented" role="radiogroup" aria-label="Richtung">
+      <label><input type="radio" name="dir" value="en-de"${direction === 'en-de' ? ' checked' : ''}><span>Englisch → Deutsch</span></label>
+      <label><input type="radio" name="dir" value="de-en"${direction === 'de-en' ? ' checked' : ''}><span>Deutsch → Englisch</span></label>
+    </div>
     <ul class="wordlist">
-      ${words.map((w) => `
-        <li><span class="term">${esc(w.term)}</span><span class="trans">${esc(w.translation)}</span></li>`).join('')}
+      ${words.map((w) => {
+        const p = progress.get(w.id);
+        const mark = needsRepeat(p) ? '<span class="dot wrong" title="wiederholen"></span>'
+          : p.box >= 1 ? '<span class="dot right" title="gelernt"></span>' : '<span class="dot"></span>';
+        return `<li>${mark}<span class="term">${esc(w.term)}</span><span class="trans">${esc(w.translation)}</span></li>`;
+      }).join('')}
     </ul>
   `;
+  view.querySelectorAll('input[name=dir]').forEach((el) => el.addEventListener('change', () => db.setMeta('direction', el.value)));
 }
 
-async function learnView() {
-  // Built in step 2.
-  setHeader('Lernen', state.grade ? `#/grade/${state.grade}` : '#/');
-  view.innerHTML = '<p class="empty">Der Lernmodus kommt im nächsten Schritt.</p>';
+async function learnView(topicId, mode) {
+  const topic = await db.get('topics', topicId);
+  if (!topic) { location.hash = '#/'; return; }
+  if (state.grade !== topic.grade) { state.grade = topic.grade; applyTheme(); }
+  const back = `#/topic/${encodeURIComponent(topicId)}`;
+  setHeader(topic.title, back);
+  const words = await db.vocabFor(topicId);
+  const direction = await db.getMeta('direction', 'en-de');
+  await runSession(view, { topic, words, mode, direction, onExit: () => { location.hash = back; } });
 }
 
 async function settingsView() {
@@ -158,7 +176,7 @@ async function settingsView() {
 const routes = [
   [/^#\/grade\/(\d+)$/, (m) => gradeView(Number(m[1]))],
   [/^#\/topic\/(.+)$/, (m) => topicView(decodeURIComponent(m[1]))],
-  [/^#\/learn\/(.+)$/, (m) => learnView(decodeURIComponent(m[1]))],
+  [/^#\/learn\/(.+)\/(all|repeat)$/, (m) => learnView(decodeURIComponent(m[1]), m[2])],
   [/^#\/settings$/, () => settingsView()],
 ];
 
