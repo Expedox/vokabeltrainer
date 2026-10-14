@@ -1,6 +1,7 @@
 // Child profiles. Each child has its own class, design, goal and progress.
 
 import * as db from './db.js';
+import { schoolYear } from './srs.js';
 
 export const AVATARS = ['🦊', '🐼', '🐯', '🐸', '🦄', '🐙', '🐨', '🦁', '🐵', '🐧', '🐶', '🐱', '🐰', '🐢', '🦖', '🚀', '⚽', '🎸'];
 export const DEFAULT_GOAL = 20;
@@ -27,7 +28,7 @@ export async function create({ name, avatar, grade }) {
     id: `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     name: name.trim(), avatar, grade, theme: 'auto', dailyGoal: DEFAULT_GOAL,
     mode: grade <= 4 ? 'choice' : 'cards', direction: 'en-de', autoSpeak: true,
-    tasks: [], created: Date.now(),
+    tasks: [], exams: [], created: Date.now(), gradeYear: schoolYear(),
   };
   await db.put('profiles', p);
   await select(p.id);

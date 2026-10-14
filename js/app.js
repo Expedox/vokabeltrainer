@@ -5,6 +5,7 @@ import { LANGUAGES, seed } from './seed.js';
 import { esc, plain, STAGES, THEMES, stageOf, classLabel } from './util.js';
 import { parentsRoute, lock } from './parents.js';
 import { runSession, MODES } from './learn.js';
+import * as exams from './exams.js';
 
 const state = { lang: 'en', profile: null };
 const view = document.getElementById('view');
@@ -142,6 +143,18 @@ async function homeView() {
       <div class="stat"><span class="stat-big">🔥 ${streak}</span><span>${streak === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
       <div class="stat"><span class="stat-big">📚 ${learned}</span><span>Wörter gelernt</span></div>
     </div>
+    ${(await Promise.all(exams.upcoming(p).map(async (e) => {
+      const st = await exams.status(p, e, state.lang);
+      const d = srs.daysUntil(e.date);
+      return `<a class="card exam-card" href="#/exam/${encodeURIComponent(e.id)}">
+        <span class="exam-count"><b>${d > 0 ? d : d === 0 ? '!' : '✓'}</b><small>${d > 1 ? 'Tage' : d === 1 ? 'Tag' : d === 0 ? 'heute' : 'vorbei'}</small></span>
+        <span class="exam-main"><strong>📅 ${esc(e.title)} ${exams.countdown(e)}</strong>
+          <small>${st.ready} % sitzen schon${d >= 0 ? ` · heute ${st.portion} Wörter üben` : ''}</small>
+          <span class="tp-bar"><span style="width:${st.ready}%"></span></span>
+        </span>
+        <span class="go" aria-hidden="true">›</span>
+      </a>`;
+    }))).join('')}
     ${due.length ? `
       <a class="card cta" href="#/review">
         <span class="emoji" aria-hidden="true">🔁</span>
@@ -281,6 +294,7 @@ async function mixView(grade) {
           ${topics.map((t, i) => `<label class="choice"><input type="checkbox" name="t" value="${esc(t.id)}"${chosen.has(t.id) ? ' checked' : ''}><span><strong>${esc(t.icon || '📘')} ${esc(t.title)}</strong><small>${counts[i]} Wörter</small></span></label>`).join('')}
         </div>
       </section>
+      ${grade > 1 ? `<label class="choice card"><input type="checkbox" name="prev"${saved?.prev ? ' checked' : ''}><span><strong>Auch alle früheren Klassen</strong><small>Gesamter Stoff bis ${classLabel(grade)}, die unsichersten Wörter zuerst</small></span></label>` : ''}
       <section class="card">
         <h2>Wie viele Wörter?</h2>
         <div class="segmented">
@@ -295,12 +309,15 @@ async function mixView(grade) {
   const form = view.querySelector('form');
   const info = view.querySelector('#mix-info');
   const selected = () => [...form.querySelectorAll('input[name=t]:checked')].map((el) => el.value);
+  const earlier = grade > 1 ? (await db.all('topics')).filter((t) => t.lang === state.lang && t.grade < grade) : [];
+  const earlierCount = (await Promise.all(earlier.map((t) => db.vocabFor(t.id)))).reduce((n, l) => n + l.length, 0);
   const update = () => {
     const ids = new Set(selected());
-    const total = topics.reduce((n, t, i) => n + (ids.has(t.id) ? counts[i] : 0), 0);
+    const prev = form.prev?.checked;
+    const total = topics.reduce((n, t, i) => n + (ids.has(t.id) ? counts[i] : 0), 0) + (prev ? earlierCount : 0);
     const n = Number(new FormData(form).get('size'));
     info.textContent = total
-      ? `${ids.size} Themen mit ${total} Wörtern. ${n && n < total ? `Diese Runde: ${n} Wörter, zuerst die, die noch nicht sitzen.` : 'Diese Runde: alle Wörter.'}`
+      ? `${ids.size} Themen${prev ? ` + ${earlier.length} aus früheren Klassen` : ''} mit ${total} Wörtern. ${n && n < total ? `Diese Runde: ${n} Wörter, zuerst die, die noch nicht sitzen.` : 'Diese Runde: alle Wörter.'}`
       : 'Bitte mindestens ein Thema wählen.';
   };
   form.addEventListener('change', update);
@@ -313,29 +330,84 @@ async function mixView(grade) {
   };
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const ids = selected();
+    const prev = !!form.prev?.checked;
+    const ids = [...selected(), ...(prev ? earlier.map((t) => t.id) : [])];
     if (!ids.length) return;
     const n = Number(new FormData(form).get('size'));
-    await db.setMeta(`mix:${p.id}:${grade}`, { topics: ids, size: n });
+    await db.setMeta(`mix:${p.id}:${grade}`, { topics: selected(), size: n, prev });
     let words = (await Promise.all(ids.map((id) => db.vocabFor(id)))).flat();
     const progress = await srs.progressMap(p.id, words);
-    // Most urgent first: wrong last time, then due, then new, then the rest by box.
-    const rank = (w) => {
-      const pr = progress.get(w.id);
-      if (srs.needsRepeat(pr)) return 0;
-      if (srs.isDue(pr)) return 1;
-      if (srs.isNew(pr)) return 2;
-      return 3 + pr.box;
-    };
-    words = words.map((w) => [w, rank(w), Math.random()]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([w]) => w);
+    words = srs.byNeed(words, progress);
     if (n) words = words.slice(0, n);
-    const label = `🎯 ${classLabel(grade)} (${ids.length === topics.length ? 'alle Themen' : `${ids.length} Themen`})`;
+    const label = `🎯 ${classLabel(grade)} (${prev ? 'mit früheren Klassen' : selected().length === topics.length ? 'alle Themen' : `${selected().length} Themen`})`;
     await runSession(view, {
       profile: p, words, mode: p.mode, direction: p.direction, autoSpeak: p.autoSpeak, label,
       onExit: () => { location.hash = back; },
       onFinish: () => finishExtra(null),
     });
   };
+}
+
+async function examView(id) {
+  const p = state.profile;
+  const exam = (p.exams || []).find((e) => e.id === id);
+  if (!exam) { location.hash = '#/'; return; }
+  setHeader(exam.title, '#/');
+  const st = await exams.status(p, exam, state.lang);
+  const d = srs.daysUntil(exam.date);
+  const last = exam.results?.at(-1);
+  view.innerHTML = `
+    <div class="exam-hero">
+      <div class="exam-big">${d > 0 ? d : d === 0 ? '🎯' : '✓'}</div>
+      <p class="lead">${d > 1 ? 'Tage bis' : d === 1 ? 'Tag bis' : ''} ${esc(exam.title)} ${d <= 0 ? exams.countdown(exam) : ''}</p>
+    </div>
+    <section class="card">
+      <h2>So gut sitzt der Stoff</h2>
+      <div class="tp-bar big-bar"><span style="width:${st.ready}%"></span></div>
+      <p class="hint">${st.ready} % geschafft · ${st.solid} von ${st.total} Wörtern sitzen schon sicher.${last ? ` Letzte Probe-Prüfung: ${last.right}/${last.total} richtig.` : ''}</p>
+    </section>
+    <div class="stack wide">
+      <a class="btn primary big" href="#/exam/${encodeURIComponent(id)}/prep">💪 Heute üben: ${st.portion} Wörter</a>
+      <a class="btn big" href="#/exam/${encodeURIComponent(id)}/test">📝 Probe-Prüfung (${exam.size || st.total} Fragen)</a>
+    </div>
+    <p class="hint">Beim Üben kommen zuerst die Wörter, die noch nicht sitzen. Die Probe-Prüfung fragt zufällig, wie bei der echten Prüfung, und jedes Wort nur einmal.</p>
+  `;
+}
+
+async function examRunView(id, kind) {
+  const p = state.profile;
+  const exam = (p.exams || []).find((e) => e.id === id);
+  if (!exam) { location.hash = '#/'; return; }
+  const back = `#/exam/${encodeURIComponent(id)}`;
+  setHeader(kind === 'test' ? `Probe: ${exam.title}` : exam.title, back);
+  const st = await exams.status(p, exam, state.lang);
+  let words;
+  if (kind === 'test') {
+    words = st.words.map((w) => [w, Math.random()]).sort((a, b) => a[1] - b[1]).map(([w]) => w);
+    if (exam.size) words = words.slice(0, exam.size);
+  } else {
+    words = srs.byNeed(st.words, st.progress).slice(0, st.portion);
+  }
+  await runSession(view, {
+    profile: p, words, pool: st.words, direction: p.direction, autoSpeak: p.autoSpeak,
+    mode: kind === 'test' ? exam.mode : p.mode,
+    exam: kind === 'test',
+    label: `${kind === 'test' ? '📝 Probe' : '📅 Vorbereitung'}: ${exam.title}`,
+    onExit: () => { location.hash = back; },
+    onFinish: async ({ total, missedIds }) => {
+      if (kind === 'test') {
+        const fresh = await db.get('profiles', p.id);
+        const e = fresh.exams.find((x) => x.id === id);
+        e.results = [...(e.results || []), { at: Date.now(), total, right: total - missedIds.length, missed: missedIds }];
+        await profiles.save(fresh);
+        state.profile = fresh;
+        const score = Math.round(((total - missedIds.length) / total) * 100);
+        const verdict = score >= 90 ? 'Du bist bestens vorbereitet! 🏆' : score >= 75 ? 'Schon richtig gut! Noch ein bisschen üben.' : score >= 50 ? 'Auf dem Weg. Übe die Fehler noch einmal.' : 'Da geht noch was. Übe jeden Tag ein bisschen.';
+        return `<div class="finish-stats"><div class="finish-stat"><b>${score} %</b><span>richtig</span></div></div><p class="hint">${verdict}</p>`;
+      }
+      return finishExtra(null);
+    },
+  });
 }
 
 async function finishExtra(topicId) {
@@ -451,6 +523,8 @@ const routes = [
   [/^#\/learn\/([^/]+)$/, (m) => learnView(decodeURIComponent(m[1]), false)],
   [/^#\/review$/, () => reviewView()],
   [/^#\/mix\/(\d+)$/, (m) => mixView(Number(m[1]))],
+  [/^#\/exam\/([^/]+)\/(prep|test)$/, (m) => examRunView(decodeURIComponent(m[1]), m[2])],
+  [/^#\/exam\/([^/]+)$/, (m) => examView(decodeURIComponent(m[1]))],
   [/^#\/settings$/, () => settingsView()],
   [/^#\/parents(.*)$/, (m) => parentsRoute({ view, setHeader, lang: state.lang, grade: state.profile?.grade, refresh: refreshProfile }, m[1])],
 ];

@@ -5,6 +5,7 @@ import * as srs from './srs.js';
 import * as profiles from './profiles.js';
 import { esc, plain, STAGES, classLabel } from './util.js';
 import { saveFile } from './io.js';
+import { examsSection, examReport } from './exams.js';
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const fmtDate = (t) => new Date(t).toLocaleDateString('de-AT', { day: 'numeric', month: 'numeric' });
@@ -115,13 +116,15 @@ export async function childView(ctx, id) {
   const modeName = { cards: 'Karteikarten', choice: 'Auswählen', write: 'Schreiben' };
 
   view.innerHTML = `
-    <p class="lead">${classLabel(p.grade)} · ${s.last ? `zuletzt gelernt ${fmtDateTime(s.last)}` : 'hat noch nicht gelernt'}</p>
+    <p class="lead">${classLabel(p.grade)} <a class="link-btn" href="#/parents/child/${encodeURIComponent(p.id)}/edit">Klasse ändern</a><br>${s.last ? `zuletzt gelernt ${fmtDateTime(s.last)}` : 'hat noch nicht gelernt'}</p>
     <div class="kpis">
       <div class="kpi"><b>${s.weekDays}/7</b><span>Lerntage (7 Tage)</span></div>
       <div class="kpi"><b>${s.weekQuote} %</b><span>richtig (7 Tage)</span></div>
       <div class="kpi"><b>${s.learned}</b><span>Wörter gelernt</span></div>
       <div class="kpi"><b>🔥 ${s.streak}</b><span>Tage in Folge</span></div>
     </div>
+
+    ${await examsSection(p, ctx.lang)}
 
     <section class="card">
       <h2>Antworten pro Tag</h2>
@@ -166,6 +169,12 @@ export async function childView(ctx, id) {
     const show = () => { tip.textContent = b.dataset.tip; view.querySelectorAll('.bar-col').forEach((x) => x.classList.toggle('active', x === b)); };
     b.addEventListener('click', show);
     b.addEventListener('mouseenter', show);
+  });
+  view.querySelectorAll('.share-exam').forEach((b) => {
+    b.onclick = async () => {
+      const exam = p.exams.find((e) => e.id === b.dataset.id);
+      shareText(`${exam.title}-${p.name}.txt`, await examReport(p, exam, ctx.lang));
+    };
   });
   view.querySelector('#report').onclick = () => {
     const text = reportText(p, s, topics, problems);
@@ -227,7 +236,7 @@ export async function editChildView(ctx, id) {
       <div class="field"><span>Tier</span>
         <div class="avatars">${profiles.AVATARS.map((a) => `<button type="button" class="avatar${a === p.avatar ? ' on' : ''}" data-a="${a}">${a}</button>`).join('')}</div>
       </div>
-      <label class="field"><span>Klasse</span>
+      <label class="field"><span>Klasse (z. B. beim Schuljahreswechsel ändern, der Lernfortschritt bleibt)</span>
         <select name="grade">${STAGES.map((s) => `<optgroup label="${s.name}">${s.grades.map((g) => `<option value="${g}"${g === p.grade ? ' selected' : ''}>${classLabel(g)}</option>`).join('')}</optgroup>`).join('')}</select>
       </label>
       <label class="field"><span>Tagesziel (Antworten pro Tag)</span>
@@ -249,7 +258,7 @@ export async function editChildView(ctx, id) {
   });
   form.onsubmit = async (e) => {
     e.preventDefault();
-    Object.assign(p, { name: form.name.value.trim(), avatar, grade: Number(form.grade.value), dailyGoal: Number(form.goal.value) });
+    Object.assign(p, { name: form.name.value.trim(), avatar, grade: Number(form.grade.value), dailyGoal: Number(form.goal.value), gradeYear: srs.schoolYear() });
     await profiles.save(p);
     await ctx.refresh();
     location.hash = back;

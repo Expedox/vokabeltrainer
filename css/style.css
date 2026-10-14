@@ -414,3 +414,25 @@ details.card[open] summary { margin-bottom: 12px; }
 .row.between { justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .row.between h2 { margin: 0; }
 .mix .card { margin-bottom: 0; }
+
+/* ---- Exams ---- */
+.exam-card { display: flex; align-items: center; gap: 14px; border: 2px solid var(--accent); margin-bottom: 12px; }
+.exam-count { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 58px; height: 58px; border-radius: 16px; background: var(--accent); color: var(--accent-text); }
+.exam-count b { font-size: 1.5rem; line-height: 1; }
+.exam-count small { font-size: .7em; }
+.exam-main { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.exam-main small { color: var(--muted); }
+.exam-card .go { font-size: 2rem; color: var(--muted); }
+.exam-hero { text-align: center; padding: 8px 0 4px; }
+.exam-big { font-size: 4.5rem; font-weight: 800; line-height: 1; color: var(--accent); }
+.big-bar { height: 14px; }
+.exam-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 14px; }
+.exam-list li { display: grid; gap: 6px; }
+.exam-list a { display: flex; justify-content: space-between; gap: 10px; }
+.exam-side { text-align: right; font-weight: 700; display: flex; flex-direction: column; }
+.exam-side small, .exam-list .exam-main small { font-weight: 400; color: var(--muted); font-size: .8em; }
+.exam-list .link-btn { justify-self: start; margin: 0; }
+.school-year .row { margin-top: 8px; gap: 8px; }
+.school-year .btn { padding: 8px 14px; }
+.lead .link-btn { font-size: .75em; margin-left: 6px; }
+label.choice.card { margin: 0; }

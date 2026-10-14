@@ -101,7 +101,7 @@ export async function runSession(view, opts) {
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${known}">
           <div class="bar" style="width:${(known / total) * 100}%"></div>
         </div>
-        <p class="counter">${known} von ${total} geschafft${missed.size ? ` · ${missed.size} zum Wiederholen` : ''}</p>
+        <p class="counter">${opts.exam ? `Frage ${Math.min(known + 1, total)} von ${total}` : `${known} von ${total} geschafft${missed.size ? ` · ${missed.size} zum Wiederholen` : ''}`}</p>
         ${inner}
       </div>`;
     wireSpeak(view);
@@ -269,7 +269,9 @@ export async function runSession(view, opts) {
     if (ok) known++;
     else {
       missed.add(w.id);
-      queue.splice(Math.min(3, queue.length), 0, w);
+      // In a test every word is asked once; otherwise missed words come back.
+      if (opts.exam) known++;
+      else queue.splice(Math.min(3, queue.length), 0, w);
     }
     await Promise.all([srs.logAnswer(session, w.id, ok), db.put('progress', p)]);
     busy = false;
@@ -280,23 +282,25 @@ export async function runSession(view, opts) {
     keys = {};
     const perfect = missed.size === 0;
     const t = theme();
-    const extra = opts.onFinish ? await opts.onFinish({ total, missed: missed.size }) : '';
+    const extra = opts.onFinish ? await opts.onFinish({ total, missed: missed.size, missedIds: [...missed] }) : '';
     view.innerHTML = `
       <div class="learn done">
         <div class="result-emoji" aria-hidden="true">${t === 'adult' ? '✓' : perfect ? '🏆' : '⭐'}</div>
-        <h2>${perfect ? pick(PRAISE[t]) : t === 'adult' ? 'Runde beendet.' : 'Geschafft!'}</h2>
-        <p class="lead">${total} Wörter · ${perfect ? 'alles beim ersten Mal gewusst' : `${missed.size} musstest du wiederholen`}</p>
+        <h2>${perfect ? pick(PRAISE[t]) : opts.exam ? 'Probe-Prüfung beendet' : t === 'adult' ? 'Runde beendet.' : 'Geschafft!'}</h2>
+        <p class="lead">${opts.exam
+          ? `${total - missed.size} von ${total} richtig`
+          : `${total} Wörter · ${perfect ? 'alles beim ersten Mal gewusst' : `${missed.size} musstest du wiederholen`}`}</p>
         ${extra}
         <div class="stack">
           ${missed.size ? '<button class="btn primary" id="again-missed">Diese Fehler nochmal üben</button>' : ''}
-          <button class="btn${missed.size ? '' : ' primary'}" id="again">Nochmal</button>
+          ${opts.exam ? '' : `<button class="btn${missed.size ? '' : ' primary'}" id="again">Nochmal</button>`}
           <button class="btn" id="exit">Fertig</button>
         </div>
       </div>`;
     if (missed.size <= total / 4) confetti(view);
     const missedWords = words.filter((w) => missed.has(w.id));
-    view.querySelector('#again-missed')?.addEventListener('click', () => runSession(view, { ...opts, words: missedWords }));
-    view.querySelector('#again').onclick = () => runSession(view, opts);
+    view.querySelector('#again-missed')?.addEventListener('click', () => runSession(view, { ...opts, exam: false, label: undefined, words: missedWords }));
+    view.querySelector('#again')?.addEventListener('click', () => runSession(view, opts));
     view.querySelector('#exit').onclick = onExit;
   }
 

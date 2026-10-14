@@ -124,3 +124,21 @@ export async function dueWords(profileId, lang, limit = 30) {
     .sort((a, b) => byId.get(a.id).box - byId.get(b.id).box || byId.get(a.id).due - byId.get(b.id).due)
     .slice(0, limit);
 }
+
+// Most urgent first: wrong last time, then due, then new, then the rest by box.
+export function byNeed(words, progress) {
+  const rank = (w) => {
+    const p = progress.get(w.id);
+    if (needsRepeat(p)) return 0;
+    if (isDue(p)) return 1;
+    if (isNew(p)) return 2;
+    return 3 + p.box;
+  };
+  return words.map((w) => [w, rank(w), Math.random()]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([w]) => w);
+}
+
+export const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+export const daysUntil = (t) => Math.round((startOfDay(t) - startOfDay(Date.now())) / DAY);
+
+// School year starts in September: Oct 2026 → 2026, March 2027 → 2026.
+export const schoolYear = (t = Date.now()) => { const d = new Date(t); return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; };

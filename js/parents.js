@@ -5,6 +5,8 @@ import { esc, STAGES, classLabel } from './util.js';
 import * as io from './io.js';
 import * as profiles from './profiles.js';
 import { childSummary, childView, tasksView, editChildView } from './child.js';
+import { examFormView } from './exams.js';
+import * as srs from './srs.js';
 
 const UNLOCK_MS = 10 * 60 * 1000;
 let unlockedUntil = 0;
@@ -189,7 +191,17 @@ async function dashboard(ctx) {
   const sums = await Promise.all(kids.map(childSummary));
   const lastBackup = await db.getMeta('lastBackup');
   const needBackup = kids.length && sums.some((x) => x.sessions.length) && (!lastBackup || Date.now() - lastBackup > 30 * 864e5);
+  // New school year (September/October): offer to move each child up one class.
+  const year = srs.schoolYear();
+  const month = new Date().getMonth();
+  const moveUp = month >= 8 && month <= 9 ? kids.filter((k) => k.grade < 12 && (k.gradeYear ?? srs.schoolYear(k.created)) < year) : [];
   view.innerHTML = `
+    ${moveUp.map((k) => `<div class="card cta soft school-year">
+      <span class="emoji" aria-hidden="true">🎒</span>
+      <span><strong>Neues Schuljahr</strong><small>Ist ${esc(k.name)} jetzt in der ${classLabel(k.grade + 1)}?</small>
+        <span class="row"><button class="btn primary" data-up="${esc(k.id)}">Ja, hochstufen</button><button class="btn" data-keep="${esc(k.id)}">Nein</button></span>
+      </span>
+    </div>`).join('')}
     ${needBackup ? `<a class="card cta warn" href="#/parents/export">
       <span class="emoji" aria-hidden="true">💾</span>
       <span><strong>Sicherung empfohlen</strong><small>${lastBackup ? 'Die letzte Sicherung ist über einen Monat alt.' : 'Es gibt noch keine Sicherung des Lernfortschritts.'}</small></span>
@@ -234,6 +246,16 @@ async function dashboard(ctx) {
     <button class="btn" id="lock">🔒 Elternbereich sperren</button>
   `;
   view.querySelector('#lock').onclick = () => { lock(); location.hash = '#/'; };
+  view.querySelectorAll('[data-up],[data-keep]').forEach((b) => {
+    b.onclick = async () => {
+      const k = await db.get('profiles', b.dataset.up || b.dataset.keep);
+      if (b.dataset.up) k.grade = Math.min(12, k.grade + 1);
+      k.gradeYear = year;
+      await profiles.save(k);
+      await ctx.refresh();
+      dashboard(ctx);
+    };
+  });
 }
 
 async function addView(ctx, topicId) {
@@ -462,6 +484,8 @@ export async function parentsRoute(ctx, rest) {
     if (rest === '/pin') return changePin(ctx);
     if ((m = rest.match(/^\/child\/([^/]+)\/tasks$/))) return tasksView(ctx, decodeURIComponent(m[1]));
     if ((m = rest.match(/^\/child\/([^/]+)\/edit$/))) return editChildView(ctx, decodeURIComponent(m[1]));
+    if ((m = rest.match(/^\/child\/([^/]+)\/exam\/new$/))) return examFormView(ctx, decodeURIComponent(m[1]), null);
+    if ((m = rest.match(/^\/child\/([^/]+)\/exam\/([^/]+)$/))) return examFormView(ctx, decodeURIComponent(m[1]), decodeURIComponent(m[2]));
     if ((m = rest.match(/^\/child\/([^/]+)$/))) return childView(ctx, decodeURIComponent(m[1]));
     return dashboard(ctx);
   };
