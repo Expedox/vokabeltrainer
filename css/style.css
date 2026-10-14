@@ -410,3 +410,7 @@ details.card[open] summary { margin-bottom: 12px; }
 .write-form .row #tip { flex: 0 0 56px; padding-left: 0; padding-right: 0; }
 .tip { margin: 0; text-align: center; font: 700 1.3em/1.2 ui-monospace, Menlo, monospace; letter-spacing: 2px; color: var(--accent); }
 .tip[hidden] { display: none; }
+.cta.soft { background: var(--surface); color: var(--text); border: 2px solid var(--accent); margin-bottom: 12px; }
+.row.between { justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.row.between h2 { margin: 0; }
+.mix .card { margin-bottom: 0; }

@@ -71,6 +71,7 @@ export async function runSession(view, opts) {
   if (!words.length) { view.innerHTML = '<p class="empty">Keine Wörter für diese Runde.</p>'; return; }
   const progress = await srs.progressMap(profile.id, words);
   const session = srs.newSession(profile.id, opts.topicId ?? null, mode);
+  if (opts.label) session.label = opts.label;
 
   // Weakest first, shuffled within the same box.
   const queue = shuffle(words.slice()).sort((a, b) => progress.get(a.id).box - progress.get(b.id).box);

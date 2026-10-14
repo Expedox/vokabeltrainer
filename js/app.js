@@ -150,6 +150,11 @@ async function homeView() {
       </a>` : ''}
     ${tasks.length ? `<h3 class="section">📌 Aufgaben</h3>${await topicTiles(tasks)}` : ''}
     <h3 class="section">${classLabel(p.grade)}</h3>
+    ${mine.length > 1 ? `<a class="card cta soft" href="#/mix/${p.grade}">
+      <span class="emoji" aria-hidden="true">🎯</span>
+      <span><strong>Ganze Klasse üben</strong><small>Alle Themen gemischt, z. B. vor einer Schularbeit</small></span>
+      <span class="go" aria-hidden="true">›</span>
+    </a>` : ''}
     ${mine.length ? await topicTiles(mine) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
     <a class="btn more-link" href="#/grades">Andere Klasse ansehen</a>
   `;
@@ -178,6 +183,11 @@ async function gradeView(grade) {
   const topics = sortTopics(await db.topicsFor(state.lang, grade));
   view.innerHTML = `
     <p class="lead"><span class="badge">${stage.short}</span> ${stage.name} · Schulstufe ${grade}</p>
+    ${topics.length > 1 ? `<a class="card cta soft" href="#/mix/${grade}">
+      <span class="emoji" aria-hidden="true">🎯</span>
+      <span><strong>Ganze Klasse üben</strong><small>Alle oder ausgewählte Themen gemischt</small></span>
+      <span class="go" aria-hidden="true">›</span>
+    </a>` : ''}
     ${topics.length ? await topicTiles(topics) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
   `;
 }
@@ -249,6 +259,83 @@ async function topicView(topicId) {
   };
   drawList();
   view.querySelectorAll('input[name=dir]').forEach((el) => el.addEventListener('change', drawList));
+}
+
+// Exam practice: several (by default all) topics of one class in one round.
+const MIX_SIZES = [20, 50, 100, 0];
+
+async function mixView(grade) {
+  const p = state.profile;
+  const back = grade === p.grade ? '#/' : `#/grade/${grade}`;
+  setHeader(`${classLabel(grade)} üben`, back);
+  const topics = sortTopics(await db.topicsFor(state.lang, grade));
+  const counts = await Promise.all(topics.map(async (t) => (await db.vocabFor(t.id)).length));
+  const saved = await db.getMeta(`mix:${p.id}:${grade}`, null);
+  const chosen = new Set(saved?.topics ?? topics.map((t) => t.id));
+  const size = saved?.size ?? 50;
+  view.innerHTML = `
+    <form class="form mix">
+      <section class="card">
+        <div class="row between"><h2>Themen</h2><button type="button" class="link-btn" id="toggle-all">Alle an/aus</button></div>
+        <div class="choices">
+          ${topics.map((t, i) => `<label class="choice"><input type="checkbox" name="t" value="${esc(t.id)}"${chosen.has(t.id) ? ' checked' : ''}><span><strong>${esc(t.icon || '📘')} ${esc(t.title)}</strong><small>${counts[i]} Wörter</small></span></label>`).join('')}
+        </div>
+      </section>
+      <section class="card">
+        <h2>Wie viele Wörter?</h2>
+        <div class="segmented">
+          ${MIX_SIZES.map((n) => `<label><input type="radio" name="size" value="${n}"${n === size ? ' checked' : ''}><span>${n || 'Alle'}</span></label>`).join('')}
+        </div>
+        <p class="hint" id="mix-info"></p>
+      </section>
+      ${modePicker(p)}
+      <button class="btn primary big sticky-save">Los geht's!</button>
+    </form>`;
+  wireModePicker();
+  const form = view.querySelector('form');
+  const info = view.querySelector('#mix-info');
+  const selected = () => [...form.querySelectorAll('input[name=t]:checked')].map((el) => el.value);
+  const update = () => {
+    const ids = new Set(selected());
+    const total = topics.reduce((n, t, i) => n + (ids.has(t.id) ? counts[i] : 0), 0);
+    const n = Number(new FormData(form).get('size'));
+    info.textContent = total
+      ? `${ids.size} Themen mit ${total} Wörtern. ${n && n < total ? `Diese Runde: ${n} Wörter, zuerst die, die noch nicht sitzen.` : 'Diese Runde: alle Wörter.'}`
+      : 'Bitte mindestens ein Thema wählen.';
+  };
+  form.addEventListener('change', update);
+  update();
+  view.querySelector('#toggle-all').onclick = () => {
+    const boxes = [...form.querySelectorAll('input[name=t]')];
+    const on = !boxes.every((b) => b.checked);
+    boxes.forEach((b) => { b.checked = on; });
+    update();
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const ids = selected();
+    if (!ids.length) return;
+    const n = Number(new FormData(form).get('size'));
+    await db.setMeta(`mix:${p.id}:${grade}`, { topics: ids, size: n });
+    let words = (await Promise.all(ids.map((id) => db.vocabFor(id)))).flat();
+    const progress = await srs.progressMap(p.id, words);
+    // Most urgent first: wrong last time, then due, then new, then the rest by box.
+    const rank = (w) => {
+      const pr = progress.get(w.id);
+      if (srs.needsRepeat(pr)) return 0;
+      if (srs.isDue(pr)) return 1;
+      if (srs.isNew(pr)) return 2;
+      return 3 + pr.box;
+    };
+    words = words.map((w) => [w, rank(w), Math.random()]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([w]) => w);
+    if (n) words = words.slice(0, n);
+    const label = `🎯 ${classLabel(grade)} (${ids.length === topics.length ? 'alle Themen' : `${ids.length} Themen`})`;
+    await runSession(view, {
+      profile: p, words, mode: p.mode, direction: p.direction, autoSpeak: p.autoSpeak, label,
+      onExit: () => { location.hash = back; },
+      onFinish: () => finishExtra(null),
+    });
+  };
 }
 
 async function finishExtra(topicId) {
@@ -363,6 +450,7 @@ const routes = [
   [/^#\/learn\/([^/]+)\/repeat$/, (m) => learnView(decodeURIComponent(m[1]), true)],
   [/^#\/learn\/([^/]+)$/, (m) => learnView(decodeURIComponent(m[1]), false)],
   [/^#\/review$/, () => reviewView()],
+  [/^#\/mix\/(\d+)$/, (m) => mixView(Number(m[1]))],
   [/^#\/settings$/, () => settingsView()],
   [/^#\/parents(.*)$/, (m) => parentsRoute({ view, setHeader, lang: state.lang, grade: state.profile?.grade, refresh: refreshProfile }, m[1])],
 ];

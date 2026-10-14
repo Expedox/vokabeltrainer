@@ -151,7 +151,7 @@ export async function childView(ctx, id) {
     <section class="card">
       <h2>Letzte Lernrunden</h2>
       ${recent.length ? `<ul class="wordlist">
-        ${recent.map((r) => `<li><span class="term">${esc(r.topicId ? topicNames.get(r.topicId) ?? 'Thema' : 'Wiederholung')}<small>${fmtDateTime(r.start)} · ${modeName[r.mode] ?? ''}</small></span><span class="trans">${r.right}/${r.answers} richtig</span></li>`).join('')}
+        ${recent.map((r) => `<li><span class="term">${esc(r.label ?? (r.topicId ? topicNames.get(r.topicId) ?? 'Thema' : 'Wiederholung'))}<small>${fmtDateTime(r.start)} · ${modeName[r.mode] ?? ''}</small></span><span class="trans">${r.right}/${r.answers} richtig</span></li>`).join('')}
       </ul>` : '<p class="hint">Noch keine Lernrunden.</p>'}
     </section>
 
