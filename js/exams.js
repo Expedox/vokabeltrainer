@@ -34,8 +34,10 @@ export async function examTopics(exam, lang) {
   return all.filter((t) => ids.has(t.id) || (exam.includePrev && t.grade < exam.grade));
 }
 
+// A sentence exam asks the topics' sentences, every other exam their words.
 export async function examWords(exam, lang) {
-  return (await Promise.all((await examTopics(exam, lang)).map((t) => db.vocabFor(t.id)))).flat();
+  const kind = exam.mode === 'sentences' ? 'sentence' : 'word';
+  return (await Promise.all((await examTopics(exam, lang)).map((t) => db.vocabFor(t.id, kind)))).flat();
 }
 
 // How ready the child is, and today's portion of words to practise.
@@ -94,6 +96,7 @@ export async function examFormView(ctx, childId, examId) {
           <select name="mode">
             <option value="write"${exam.mode === 'write' ? ' selected' : ''}>Schreiben (wie bei der Schularbeit)</option>
             <option value="choice"${exam.mode === 'choice' ? ' selected' : ''}>Auswählen</option>
+            <option value="sentences"${exam.mode === 'sentences' ? ' selected' : ''}>Sätze (richtigen Satz finden und bauen)</option>
           </select>
         </label>
         <p class="hint" id="exam-info"></p>
@@ -117,11 +120,11 @@ export async function examFormView(ctx, childId, examId) {
   }
 
   async function updateInfo() {
-    const draft = { ...exam, grade: Number(form.grade.value), includePrev: form.prev.checked, topics: [...form.querySelectorAll('input[name=t]:checked')].map((el) => el.value) };
+    const draft = { ...exam, mode: form.mode.value, grade: Number(form.grade.value), includePrev: form.prev.checked, topics: [...form.querySelectorAll('input[name=t]:checked')].map((el) => el.value) };
     const words = await examWords(draft, lang);
     const days = srs.daysUntil(new Date(form.date.value).getTime());
     info.textContent = words.length
-      ? `${words.length} Wörter Prüfungsstoff${days > 0 ? `, ${days} Tage Zeit: etwa ${Math.max(MIN_PORTION, Math.min(MAX_PORTION, Math.ceil(words.length / days)))} Wörter pro Tag.` : '.'}`
+      ? `${words.length} ${form.mode.value === 'sentences' ? 'Sätze' : 'Wörter'} Prüfungsstoff${days > 0 ? `, ${days} Tage Zeit: etwa ${Math.max(MIN_PORTION, Math.min(MAX_PORTION, Math.ceil(words.length / days)))} Wörter pro Tag.` : '.'}`
       : 'Bitte mindestens ein Thema wählen.';
   }
 

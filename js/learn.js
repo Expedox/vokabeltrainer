@@ -1,8 +1,11 @@
-// A learning round in one of four modes:
+// A learning round in one of five modes:
 //   cards  – flip the card, then "Kann ich" / "Muss ich wiederholen"
 //   choice – pick the right answer out of four
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
+//   sentences – pick the right English sentence out of four, later build it from tiles
+// Sentence items (kind: 'sentence') are always shown as sentence exercises,
+// e.g. when they turn up in "Heute wiederholen".
 // Missed words come back a few cards later in the same round. The round ends
 // when every word has been answered right once.
 
@@ -12,6 +15,7 @@ import { esc, plain } from './util.js';
 import { speak, speakAll, canSpeak } from './speech.js';
 import { check } from './check.js';
 import { sentenceHtml, gapWord } from './bee.js';
+import { isSentence, tokens, sameSentence, diffHtml, tiles } from './sentences.js';
 import { normalize } from './check.js';
 
 export const MODES = [
@@ -19,6 +23,7 @@ export const MODES = [
   { id: 'choice', name: 'Auswählen', icon: '🔘', hint: 'Richtige Antwort antippen' },
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
+  { id: 'sentences', name: 'Sätze', icon: '💬', hint: 'Richtigen Satz finden, dann selbst bauen', english: true },
 ];
 
 const PRAISE = {
@@ -72,7 +77,10 @@ function confetti(host) {
  */
 export async function runSession(view, opts) {
   const { profile, words, mode, direction, onExit } = opts;
-  if (!words.length) { view.innerHTML = '<p class="empty">Keine Wörter für diese Runde.</p>'; return; }
+  if (!words.length) {
+    view.innerHTML = `<p class="empty">${mode === 'sentences' ? 'Hier gibt es noch keine Sätze zum Üben.' : 'Keine Wörter für diese Runde.'}</p>`;
+    return;
+  }
   const progress = await srs.progressMap(profile.id, words);
   const session = srs.newSession(profile.id, opts.topicId ?? null, mode);
   if (opts.label) session.label = opts.label;
@@ -115,7 +123,10 @@ export async function runSession(view, opts) {
   function render() {
     answered = false;
     const w = queue[0];
-    if (mode === 'choice') renderChoice(w);
+    if (isSentence(w)) {
+      // New or just missed: pick from four. Known once: build it from tiles.
+      if (progress.get(w.id).box >= 1 && tokens(w.term).length <= 14) renderBuild(w); else renderPick(w);
+    } else if (mode === 'choice' || mode === 'sentences') renderChoice(w);
     else if (mode === 'write') renderWrite(w);
     else if (mode === 'spell') renderSpell(w);
     else renderCard(w);
@@ -294,6 +305,87 @@ export async function runSession(view, opts) {
     keys = {};
   }
 
+  // ---- sentences ----
+  let given = '';
+  let why = '';
+  const sentencePrompt = (w, task) => `
+      <div class="prompt-card sentence-card">
+        <span class="de-sentence">${esc(w.translation)}</span>
+      </div>
+      <p class="hint center">${task}</p>`;
+
+  function renderPick(w) {
+    const options = shuffle([w.term, ...(w.distractors ?? [])]);
+    frame(`${sentencePrompt(w, 'Welcher Satz ist richtig?')}
+      <div class="options sentence-options">
+        ${options.map((o, i) => `<button class="btn option" data-i="${i}">${esc(o)}</button>`).join('')}
+      </div>
+      <div class="feedback" hidden></div>`);
+    const choose = (btn) => {
+      if (answered) return;
+      const text = options[Number(btn.dataset.i)];
+      const ok = text === w.term;
+      view.querySelectorAll('.option').forEach((b) => {
+        b.disabled = true;
+        if (options[Number(b.dataset.i)] === w.term) b.classList.add('is-right');
+      });
+      if (!ok) {
+        btn.classList.add('is-wrong');
+        btn.innerHTML = diffHtml(text, w.term, 'bad');
+        view.querySelector('.option.is-right').innerHTML = diffHtml(w.term, text, 'good');
+        given = text;
+        why = w.why?.[(w.distractors ?? []).indexOf(text)] ?? '';
+      }
+      feedback(ok, w);
+    };
+    view.querySelectorAll('.option').forEach((b) => { b.onclick = () => choose(b); });
+    keys = { pick: (n) => { const b = view.querySelectorAll('.option')[n]; if (b) choose(b); } };
+  }
+
+  function renderBuild(w) {
+    const set = tiles(w.term, w.distractors);
+    const pool = shuffle(set.all.map((t, i) => ({ t, i })));
+    const built = [];
+    frame(`${sentencePrompt(w, 'Bau den Satz auf Englisch.')}
+      <div class="built" aria-live="polite"></div>
+      <div class="tiles">${pool.map(({ t, i }) => `<button class="tile-word" data-i="${i}">${esc(t)}</button>`).join('')}</div>
+      <div class="row center">
+        <button class="btn" id="giveup">Weiß ich nicht</button>
+        <button class="btn primary" id="check" disabled>Prüfen</button>
+      </div>
+      <div class="feedback" hidden></div>`);
+    const box = view.querySelector('.built');
+    const check = view.querySelector('#check');
+    const draw = () => {
+      box.innerHTML = built.map((i, n) => `<button class="tile-word placed" data-n="${n}">${esc(set.all[i])}</button>`).join('') || '<span class="hint">Tippe die Wörter in der richtigen Reihenfolge an.</span>';
+      view.querySelectorAll('.tiles .tile-word').forEach((b) => { b.disabled = answered || built.includes(Number(b.dataset.i)); });
+      box.querySelectorAll('.placed').forEach((b) => {
+        b.onclick = () => { if (answered) return; built.splice(Number(b.dataset.n), 1); draw(); };
+      });
+      check.disabled = !built.length;
+    };
+    view.querySelectorAll('.tiles .tile-word').forEach((b) => {
+      b.onclick = () => { if (answered) return; built.push(Number(b.dataset.i)); draw(); };
+    });
+    draw();
+    const settle = (ok) => {
+      view.querySelector('.row.center').hidden = true;
+      view.querySelector('.tiles').hidden = true;
+      if (!ok) {
+        given = built.map((i) => set.all[i]).join(' ');
+        box.innerHTML = given ? diffHtml(given, w.term, 'bad') : '';
+        // A trap word from one of the wrong versions explains the mistake.
+        const k = (w.distractors ?? []).findIndex((d) => tokens(given).some((t) => !tokens(w.term).includes(t) && tokens(d).includes(t)));
+        why = k >= 0 ? (w.why?.[k] ?? '') : '';
+      }
+      box.classList.add(ok ? 'is-right' : 'is-wrong');
+      feedback(ok, w);
+    };
+    check.onclick = () => { if (!answered && built.length) settle(sameSentence(built.map((i) => set.all[i]).join(' '), w.term)); };
+    view.querySelector('#giveup').onclick = () => { if (!answered) { built.length = 0; settle(false); } };
+    keys = {};
+  }
+
   // Feedback for choice/write: right answers move on by themselves, wrong ones
   // wait for a tap so the child can read the solution.
   // spelled: the word to show letter by letter (spelling bee). quiet: no comfort text.
@@ -305,15 +397,17 @@ export async function runSession(view, opts) {
     box.innerHTML = ok
       ? `<strong>${pick(CHEER[t])}</strong>${hint ? `<span>${esc(hint)}</span>` : ''}`
       : `<strong>${quiet ? 'Kommt gleich nochmal.' : pick(COMFORT[t])}</strong>
-         ${spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
+         ${isSentence(w) ? `<span class="solution sentence-solution">${given ? diffHtml(w.term, given, 'good') : esc(w.term)} ${speakBtn(w)}</span>${why ? `<span class="why">💡 ${esc(why)}</span>` : ''}`
+           : spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
            : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`}
-         ${w.note ? `<span class="note">${esc(w.note)}</span>` : ''}
+         ${w.note && !isSentence(w) ? `<span class="note">${esc(w.note)}</span>` : ''}
          <button class="btn primary" id="next">Weiter</button>`;
     box.hidden = false;
     wireSpeak(box);
-    if (opts.autoSpeak && (ok ? englishOn('back') && mode !== 'spell' : true)) speak(w.term);
+    if (opts.autoSpeak && (ok ? (englishOn('back') || isSentence(w)) && mode !== 'spell' : true)) speak(w.term);
+    given = ''; why = '';
     if (ok) {
-      setTimeout(() => answer(true), hint ? 1700 : 900);
+      setTimeout(() => answer(true), hint ? 1700 : isSentence(w) ? 1600 : 900);
     } else {
       const next = box.querySelector('#next');
       next.onclick = () => answer(false);

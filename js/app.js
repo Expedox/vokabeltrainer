@@ -5,6 +5,7 @@ import { LANGUAGES, seed } from './seed.js';
 import { esc, plain, STAGES, THEMES, stageOf, classLabel } from './util.js';
 import { parentsRoute, lock } from './parents.js';
 import { runSession, MODES } from './learn.js';
+import { isSentence } from './sentences.js';
 import * as exams from './exams.js';
 
 const state = { lang: 'en', profile: null };
@@ -30,18 +31,19 @@ const starStr = (n) => `<span class="stars" aria-label="${n} von 3 Sternen">${'�
 
 async function topicTiles(topics) {
   const rows = await Promise.all(topics.map(async (t) => {
-    const words = await db.vocabFor(t.id);
+    const items = await db.vocabFor(t.id, 'all');
+    const words = items.filter((v) => !isSentence(v));
     const progress = await srs.progressMap(state.profile.id, words);
-    return { t, count: words.length, stars: srs.stars(words, progress) };
+    return { t, count: words.length, sentences: items.length - words.length, stars: srs.stars(words, progress) };
   }));
   return `
     <div class="grid topics">
-      ${rows.map(({ t, count, stars }) => `
+      ${rows.map(({ t, count, sentences, stars }) => `
         <a class="tile topic-tile" href="#/topic/${encodeURIComponent(t.id)}">
           <span class="emoji" aria-hidden="true">${esc(t.icon || '📘')}</span>
           <span class="name">${esc(t.title)}</span>
           ${starStr(stars)}
-          <span class="small">${count} Wörter${t.builtin ? '' : ' · eigene'}</span>
+          <span class="small">${count} Wörter${sentences ? ` · ${sentences} Sätze` : ''}${t.builtin ? '' : ' · eigene'}</span>
         </a>`).join('')}
     </div>`;
 }
@@ -243,6 +245,7 @@ async function topicView(topicId) {
   if (!topic) { location.hash = '#/'; return; }
   const p = state.profile;
   const words = (await db.vocabFor(topicId)).sort((a, b) => a.term.localeCompare(b.term, 'en'));
+  const sentenceCount = (await db.vocabFor(topicId, 'sentence')).length;
   const progress = await srs.progressMap(p.id, words);
   const repeat = words.filter((w) => srs.needsRepeat(progress.get(w.id))).length;
   const learned = words.filter((w) => srs.isLearned(progress.get(w.id))).length;
@@ -253,7 +256,7 @@ async function topicView(topicId) {
       <span class="emoji big-emoji" aria-hidden="true">${esc(topic.icon || '📘')}</span>
       <div>
         ${starStr(srs.stars(words, progress))}
-        <p class="lead">${learned} von ${words.length} Wörtern gelernt</p>
+        <p class="lead">${learned} von ${words.length} Wörtern gelernt${sentenceCount ? `<br>💬 ${sentenceCount} Sätze zum Üben` : ''}</p>
       </div>
     </div>
     ${modePicker(p)}
@@ -343,7 +346,7 @@ async function mixView(grade) {
     if (!ids.length) return;
     const n = Number(new FormData(form).get('size'));
     await db.setMeta(`mix:${p.id}:${grade}`, { topics: selected(), size: n, prev });
-    let words = (await Promise.all(ids.map((id) => db.vocabFor(id)))).flat();
+    let words = (await Promise.all(ids.map((id) => db.vocabFor(id, p.mode === 'sentences' ? 'sentence' : 'word')))).flat();
     const progress = await srs.progressMap(p.id, words);
     words = srs.byNeed(words, progress);
     if (n) words = words.slice(0, n);
@@ -440,7 +443,7 @@ async function learnView(topicId, onlyRepeat) {
   const back = `#/topic/${encodeURIComponent(topicId)}`;
   setHeader(topic.title, back);
   const p = state.profile;
-  let words = await db.vocabFor(topicId);
+  let words = await db.vocabFor(topicId, p.mode === 'sentences' ? 'sentence' : 'word');
   if (onlyRepeat) {
     const progress = await srs.progressMap(p.id, words);
     const missed = words.filter((w) => srs.needsRepeat(progress.get(w.id)));

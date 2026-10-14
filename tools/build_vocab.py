@@ -1,6 +1,13 @@
 """Builds data/<lang>.json from the per-grade word lists.
 
-Usage: python3 tools/build_vocab.py <source dir with stufe-XX.json> [lang]
+Usage: python3 tools/build_vocab.py <source dir with stufe-XX.json> [lang] [sentence dir]
+
+Sentences come from <sentence dir> (default: ../saetze next to the source dir),
+one stufe-XX.json per grade, topic ids as in the word lists:
+  {"grade": 3, "topics": [{"id": "wohnen-umgebung", "sentences": [
+    {"de": "Ich wohne in einem Haus.", "en": "I live in a house.",
+     "distractors": ["I life in a house.", "I living in a house.", "I lives in a house."],
+     "why": ["life ist das Nomen, wohnen heißt live.", "", ""]}]}]}   # why optional
 
 Source format (one file per grade):
   {"language": "en", "grade": 7, "topics": [
@@ -45,6 +52,20 @@ def icon_for(topic):
 def main():
     src = sys.argv[1]
     lang = sys.argv[2] if len(sys.argv) > 2 else 'en'
+    sdir = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(src)), 'saetze')
+    sentences = {}
+    for path in sorted(glob.glob(os.path.join(sdir, 'stufe-*.json'))):
+        data = json.load(open(path, encoding='utf-8'))
+        for t in data['topics']:
+            rows = []
+            for x in t.get('sentences', []):
+                en, de = (x.get(lang) or x.get('en') or '').strip(), (x.get('de') or '').strip()
+                dis = [d.strip() for d in x.get('distractors', []) if d and d.strip() and d.strip() != en][:3]
+                if not en or not de or len(dis) < 1:
+                    continue
+                why = [(w or '').strip() for w in x.get('why', [])][:len(dis)]
+                rows.append([en, de, dis, why] if any(why) else [en, de, dis])
+            sentences[(int(data['grade']), t['id'])] = rows
     topics = []
     by_key = {}
     for path in sorted(glob.glob(os.path.join(src, 'stufe-*.json'))):
@@ -61,12 +82,17 @@ def main():
                 note = (w.get('note') or '').strip()
                 icon = (w.get('icon') or '').strip()
                 words.append([term, trans, note, icon] if icon else [term, trans, note] if note else [term, trans])
+            sents = sentences.get((grade, t['id']), [])
             key = (grade, t['title_de'].strip().lower())
             if key in by_key:  # same title twice in one grade: merge
                 have = {w[0].lower() for w in by_key[key]['words']}
                 by_key[key]['words'] += [w for w in words if w[0].lower() not in have]
+                if sents:
+                    by_key[key].setdefault('sentences', []).extend(sents)
                 continue
             by_key[key] = {'grade': grade, 'title': t['title_de'].strip(), 'icon': icon_for(t), 'words': words}
+            if sents:
+                by_key[key]['sentences'] = sents
             topics.append(by_key[key])
     out = {'version': datetime.datetime.now().strftime('%Y-%m-%d.%H%M'), 'lang': lang, 'topics': topics}
     dest = os.path.join(os.path.dirname(__file__), '..', 'data', f'{lang}.json')
@@ -76,6 +102,7 @@ def main():
         f.write(json.dumps(head, ensure_ascii=False)[:-1] + ', "topics": [\n')
         f.write(',\n'.join(json.dumps(t, ensure_ascii=False) for t in topics))
         f.write('\n]}\n')
-    print(f'{len(topics)} topics, {sum(len(t["words"]) for t in topics)} words -> data/{lang}.json')
+    print(f'{len(topics)} topics, {sum(len(t["words"]) for t in topics)} words, '
+          f'{sum(len(t.get("sentences", [])) for t in topics)} sentences -> data/{lang}.json')
 
 main()

@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v22';
+const VERSION = 'v23';
 const FILES = [
   './',
   'index.html',
@@ -7,6 +7,7 @@ const FILES = [
   'css/style.css',
   'js/app.js',
   'js/bee.js',
+  'js/sentences.js',
   'js/db.js',
   'js/seed.js',
   'js/learn.js',

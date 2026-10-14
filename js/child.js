@@ -6,6 +6,7 @@ import * as profiles from './profiles.js';
 import { esc, plain, STAGES, classLabel } from './util.js';
 import { saveFile } from './io.js';
 import { examsSection, examReport } from './exams.js';
+import { isSentenceId } from './sentences.js';
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const fmtDate = (t) => new Date(t).toLocaleDateString('de-AT', { day: 'numeric', month: 'numeric' });
@@ -17,18 +18,22 @@ const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 export async function childSummary(p) {
   const sessions = await srs.sessionsFor(p.id);
   const days = srs.perDay(sessions);
-  const progress = await srs.allProgress(p.id);
+  const all = await srs.allProgress(p.id);
+  const progress = all.filter((r) => !isSentenceId(r.vocabId));
+  const sentences = all.filter((r) => isSentenceId(r.vocabId));
   const last14 = srs.lastDays(days, 14);
   const week = last14.slice(7);
   const weekAnswers = week.reduce((n, d) => n + d.answers, 0);
   const weekRight = week.reduce((n, d) => n + d.right, 0);
   return {
-    sessions, days, progress, last14,
+    sessions, days, progress, all, last14,
+    sentencesSeen: sentences.filter((r) => r.seen).length,
+    sentencesLearned: sentences.filter(srs.isLearned).length,
     streak: srs.streak(days),
     learned: progress.filter(srs.isLearned).length,
     solid: progress.filter((r) => r.box >= 3).length,
     seen: progress.filter((r) => r.seen).length,
-    due: progress.filter((r) => srs.isDue(r)).length,
+    due: all.filter((r) => srs.isDue(r)).length,
     weekDays: week.filter((d) => d.answers).length,
     weekAnswers,
     weekQuote: pct(weekRight, weekAnswers),
@@ -89,6 +94,7 @@ function reportText(p, s, topics, problems) {
     `Letzte 7 Tage: an ${pl(s.weekDays, 'Tag', 'Tagen')} gelernt, ${pl(s.weekAnswers, 'Antwort', 'Antworten')}, ${s.weekQuote} % richtig, ca. ${pl(s.weekMinutes, 'Minute', 'Minuten')}.`,
     `Serie: ${pl(s.streak, 'Tag', 'Tage')} in Folge.`,
     `Gelernte Wörter: ${s.learned} (davon ${s.solid} schon sicher).`,
+    ...(s.sentencesSeen ? [`Sätze: ${s.sentencesSeen} geübt, ${s.sentencesLearned} richtig gebaut oder gewählt.`] : []),
     s.due ? `Zum Wiederholen fällig: ${pl(s.due, 'Wort', 'Wörter')}.` : 'Keine Wörter überfällig.',
   ];
   if (topics.length) {
@@ -96,7 +102,7 @@ function reportText(p, s, topics, problems) {
     for (const r of topics) lines.push(`- ${r.t.title} (${classLabel(r.t.grade)}): ${r.learned}/${r.total} gelernt ${'★'.repeat(r.stars)}${r.task ? ' [Aufgabe]' : ''}`);
   }
   if (problems.length) {
-    lines.push('', 'Schwierige Wörter:');
+    lines.push('', 'Schwierige Wörter und Sätze:');
     for (const { w, r } of problems) lines.push(`- ${w.term} = ${w.translation} (${r.wrong}× falsch)`);
   }
   return lines.join('\n');
@@ -109,7 +115,7 @@ export async function childView(ctx, id) {
   ctx.setHeader(`${p.avatar} ${p.name}`, '#/parents');
   const s = await childSummary(p);
   const topics = await topicRows(p, s.progress);
-  const problems = await problemWords(s.progress);
+  const problems = await problemWords(s.all);
   const recent = s.sessions.slice(-8).reverse();
   const topicNames = new Map((await db.all('topics')).map((t) => [t.id, t.title]));
   const goal = p.dailyGoal || profiles.DEFAULT_GOAL;
@@ -121,6 +127,7 @@ export async function childView(ctx, id) {
       <div class="kpi"><b>${s.weekDays}/7</b><span>Lerntage (7 Tage)</span></div>
       <div class="kpi"><b>${s.weekQuote} %</b><span>richtig (7 Tage)</span></div>
       <div class="kpi"><b>${s.learned}</b><span>Wörter gelernt</span></div>
+      ${s.sentencesSeen ? `<div class="kpi"><b>${s.sentencesLearned}/${s.sentencesSeen}</b><span>Sätze sicher/geübt</span></div>` : ''}
       <div class="kpi"><b>🔥 ${s.streak}</b><span>Tage in Folge</span></div>
     </div>
 
@@ -133,7 +140,7 @@ export async function childView(ctx, id) {
     </section>
 
     <section class="card">
-      <h2>Schwierige Wörter</h2>
+      <h2>Schwierige Wörter und Sätze</h2>
       ${problems.length ? `<ul class="wordlist">
         ${problems.map(({ w, r }) => `<li><span class="term">${esc(plain(w.term, 'en'))}</span><span class="trans">${esc(plain(w.translation, 'de'))}</span><span class="badge-soft">${r.wrong}× falsch</span></li>`).join('')}
       </ul><p class="hint">Diese Wörter kommen beim Kind unter „Heute wiederholen“ automatisch öfter.</p>` : '<p class="hint">Noch keine Wörter, die öfter falsch waren.</p>'}

@@ -27,6 +27,9 @@ export async function seed(lang) {
     for (const [term, translation, note = '', icon = ''] of t.words) {
       vocab.push({ id: `${topicId}:${slug(term)}`, topicId, term, translation, note, icon, builtin: true });
     }
+    for (const [en, de, distractors = [], why = []] of t.sentences ?? []) {
+      vocab.push({ id: `${topicId}:s:${slug(en).slice(0, 80)}`, topicId, kind: 'sentence', term: en, translation: de, distractors, why, builtin: true });
+    }
   }
 
   // Drop built-in rows that no longer exist in the bundle.

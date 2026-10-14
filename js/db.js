@@ -96,8 +96,11 @@ export function topicsFor(lang, grade) {
   return all('topics', 'langGrade', [lang, grade]);
 }
 
-export function vocabFor(topicId) {
-  return all('vocab', 'topicId', topicId);
+// kind: 'word' (default), 'sentence' or 'all'. Sentences live in the vocab
+// store with kind: 'sentence', so progress and reviews work the same way.
+export async function vocabFor(topicId, kind = 'word') {
+  const rows = await all('vocab', 'topicId', topicId);
+  return kind === 'all' ? rows : rows.filter((v) => (v.kind === 'sentence') === (kind === 'sentence'));
 }
 
 // Ask the browser not to evict our data under storage pressure.
