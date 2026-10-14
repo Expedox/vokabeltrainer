@@ -2,13 +2,22 @@ import * as db from './db.js';
 import * as srs from './srs.js';
 import * as profiles from './profiles.js';
 import { LANGUAGES, seed } from './seed.js';
-import { esc, plain, STAGES, THEMES, stageOf, classLabel } from './util.js';
+import { esc, plain, STAGES, THEMES, stageOf, classLabel, isAdult, LEVELS, levelGrade, gradesOf, gradesBelow } from './util.js';
 import { parentsRoute, lock } from './parents.js';
 import { runSession, MODES } from './learn.js';
 import { isSentence } from './sentences.js';
 import * as exams from './exams.js';
+import { placementView } from './placement.js';
+import { selfStatsView } from './child.js';
 
 const state = { lang: 'en', profile: null };
+
+// Topics of a class, or of a level (its own topics plus the school words of that level).
+async function topicsForGrade(grade) {
+  return (await Promise.all(gradesOf(grade).map((g) => db.topicsFor(state.lang, g)))).flat();
+}
+const KID_STAGES = STAGES.filter((s) => s.id !== 'er');
+const ADULT_STAGE = STAGES.find((s) => s.id === 'er');
 const view = document.getElementById('view');
 const titleEl = document.getElementById('title');
 const backBtn = document.getElementById('back-btn');
@@ -52,8 +61,12 @@ const sortTopics = (list) => list.sort((a, b) => Number(b.builtin) - Number(a.bu
 
 async function todayStats(profile) {
   const days = srs.perDay(await srs.sessionsFor(profile.id));
-  const today = days.get(srs.dayKey(Date.now()))?.answers ?? 0;
-  return { today, streak: srs.streak(days), goal: profile.dailyGoal || profiles.DEFAULT_GOAL };
+  const row = days.get(srs.dayKey(Date.now()));
+  const today = row?.answers ?? 0;
+  const minutes = Math.round((row?.ms ?? 0) / 60000);
+  // Adults set their daily goal in minutes, children in answers.
+  const goal = isAdult(profile.grade) ? profile.dailyMinutes || profiles.DEFAULT_MINUTES : profile.dailyGoal || profiles.DEFAULT_GOAL;
+  return { today, minutes, streak: srs.streak(days), goal };
 }
 
 function goalRing(done, goal) {
@@ -70,7 +83,7 @@ function goalRing(done, goal) {
 // ---- Views -----------------------------------------------------------
 
 async function welcomeView(first) {
-  setHeader(first ? 'Willkommen!' : 'Neues Kind', first ? null : '#/profiles');
+  setHeader(first ? 'Willkommen!' : 'Neues Profil', first ? null : '#/profiles');
   let avatar = profiles.AVATARS[0];
   view.innerHTML = `
     <form class="card form welcome" autocomplete="off">
@@ -79,12 +92,25 @@ async function welcomeView(first) {
       <div class="field"><span>Wähle dein Tier</span>
         <div class="avatars">${profiles.AVATARS.map((a, i) => `<button type="button" class="avatar${i ? '' : ' on'}" data-a="${a}" aria-label="${a}">${a}</button>`).join('')}</div>
       </div>
-      <label class="field"><span>Deine Klasse</span>
-        <select name="grade">${STAGES.map((s) => `<optgroup label="${s.name}">${s.grades.map((g) => `<option value="${g}">${classLabel(g)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <div class="segmented" role="radiogroup" aria-label="Wer lernt?">
+        <label><input type="radio" name="who" value="kid" checked><span>Kind oder Schüler/in</span></label>
+        <label><input type="radio" name="who" value="adult"><span>Erwachsene/r</span></label>
+      </div>
+      <label class="field"><span id="grade-label">Deine Klasse</span>
+        <select name="grade"></select>
       </label>
       <button class="btn primary">Los geht's</button>
     </form>`;
   const form = view.querySelector('form');
+  const fillGrades = () => {
+    const adult = form.who.value === 'adult';
+    form.querySelector('#grade-label').textContent = adult ? 'Dein Englisch-Niveau' : 'Deine Klasse';
+    form.grade.innerHTML = adult
+      ? `<option value="test">Weiß ich nicht: kurzer Einstufungstest</option>${ADULT_STAGE.grades.map((g) => `<option value="${g}">${LEVELS[g]} ${['Anfänger', 'Grundkenntnisse', 'Mittelstufe', 'Gute Mittelstufe'][g - 21]}</option>`).join('')}`
+      : KID_STAGES.map((s) => `<optgroup label="${s.name}">${s.grades.map((g) => `<option value="${g}">${classLabel(g)}</option>`).join('')}</optgroup>`).join('');
+  };
+  fillGrades();
+  form.querySelectorAll('input[name=who]').forEach((el) => el.addEventListener('change', fillGrades));
   form.querySelectorAll('.avatar').forEach((b) => {
     b.onclick = () => {
       form.querySelectorAll('.avatar').forEach((x) => x.classList.remove('on'));
@@ -94,9 +120,10 @@ async function welcomeView(first) {
   });
   form.onsubmit = async (e) => {
     e.preventDefault();
-    state.profile = await profiles.create({ name: form.name.value, avatar, grade: Number(form.grade.value) });
+    const test = form.grade.value === 'test';
+    state.profile = await profiles.create({ name: form.name.value, avatar, grade: test ? 21 : Number(form.grade.value) });
     applyTheme();
-    location.hash = '#/';
+    location.hash = test ? '#/placement' : '#/';
   };
 }
 
@@ -111,7 +138,7 @@ async function profilesView() {
           <span class="name">${esc(p.name)}</span>
           <span class="small">${classLabel(p.grade)}</span>
         </button>`).join('')}
-      <a class="tile profile-tile add" href="#/welcome"><span class="big-emoji">➕</span><span class="name">Neues Kind</span></a>
+      <a class="tile profile-tile add" href="#/welcome"><span class="big-emoji">➕</span><span class="name">Neues Profil</span></a>
     </div>`;
   view.querySelectorAll('.profile-tile[data-id]').forEach((b) => {
     b.onclick = async () => {
@@ -126,25 +153,27 @@ async function profilesView() {
 async function homeView() {
   const p = state.profile;
   setHeader('Vokabeltrainer');
-  const { today, streak, goal } = await todayStats(p);
+  const { today, streak, goal, minutes } = await todayStats(p);
+  const adult = isAdult(p.grade);
   const due = await srs.dueWords(p.id, state.lang, 200);
   const learned = (await srs.allProgress(p.id)).filter(srs.isLearned).length;
   const tasks = (await Promise.all((p.tasks || []).map((id) => db.get('topics', id)))).filter(Boolean);
-  const mine = sortTopics(await db.topicsFor(state.lang, p.grade));
+  const mine = sortTopics(await topicsForGrade(p.grade));
   const weak = srs.weakestMode(srs.modeStats(await srs.sessionsFor(p.id)));
   const weakMode = weak && weak.mode !== p.mode && !p.taskMode ? MODES.find((m) => m.id === weak.mode) : null;
   const taskMode = p.taskMode && MODES.find((m) => m.id === p.taskMode);
-  const hello = p.grade <= 4 ? `Hallo ${esc(p.name)}! 👋` : `Hi ${esc(p.name)}!`;
+  const hello = p.grade <= 4 ? `Hallo ${esc(p.name)}! 👋` : adult ? `Hallo ${esc(p.name)}` : `Hi ${esc(p.name)}!`;
+  const goalDone = adult ? minutes : today;
   view.innerHTML = `
     <div class="hello">
       <a class="me" href="#/profiles" aria-label="Kind wechseln">${esc(p.avatar)}</a>
       <div>
         <h2>${hello}</h2>
-        <p class="hint">${today >= goal ? 'Tagesziel geschafft! 🎉' : today ? `Noch ${goal - today} Antworten bis zum Tagesziel.` : 'Bereit für heute?'}</p>
+        <p class="hint">${goalDone >= goal ? `Tagesziel geschafft!${adult ? '' : ' 🎉'}` : goalDone ? `Noch ${goal - goalDone} ${adult ? 'Minuten' : 'Antworten'} bis zum Tagesziel.` : 'Bereit für heute?'}</p>
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat">${goalRing(today, goal)}<span>Tagesziel<br><b>${Math.min(today, goal)}/${goal}</b></span></div>
+      <div class="stat">${goalRing(goalDone, goal)}<span>Tagesziel<br><b>${Math.min(goalDone, goal)}/${goal}${adult ? ' Min.' : ''}</b></span></div>
       <div class="stat"><span class="stat-big">🔥 ${streak}</span><span>${streak === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
       <div class="stat"><span class="stat-big">📚 ${learned}</span><span>Wörter gelernt</span></div>
     </div>
@@ -177,11 +206,15 @@ async function homeView() {
     <h3 class="section">${classLabel(p.grade)}</h3>
     ${mine.length > 1 ? `<a class="card cta soft" href="#/mix/${p.grade}">
       <span class="emoji" aria-hidden="true">🎯</span>
-      <span><strong>Ganze Klasse üben</strong><small>Alle Themen gemischt, z. B. vor einer Schularbeit</small></span>
+      <span><strong>${adult ? 'Ganzes Niveau üben' : 'Ganze Klasse üben'}</strong><small>${adult ? 'Alle Themen gemischt, die unsichersten zuerst' : 'Alle Themen gemischt, z. B. vor einer Schularbeit'}</small></span>
       <span class="go" aria-hidden="true">›</span>
     </a>` : ''}
     ${mine.length ? await topicTiles(mine) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
-    <a class="btn more-link" href="#/grades">Andere Klasse ansehen</a>
+    ${adult ? `<div class="stack wide">
+      <a class="btn" href="#/stats">📊 Meine Statistik</a>
+      <a class="btn" href="#/placement">🧭 Niveau prüfen (Einstufungstest)</a>
+    </div>` : ''}
+    <a class="btn more-link" href="#/grades">${adult ? 'Anderes Niveau ansehen' : 'Andere Klasse ansehen'}</a>
   `;
   wireModePicker();
   view.querySelector('#take-weak')?.addEventListener('click', async (e) => {
@@ -192,16 +225,18 @@ async function homeView() {
 }
 
 async function gradesView() {
-  setHeader('Alle Klassen', '#/');
+  const adult = isAdult(state.profile.grade);
+  setHeader(adult ? 'Alle Niveaus' : 'Alle Klassen', '#/');
+  // Adults see their levels first, then the school classes.
   view.innerHTML = `
-    ${STAGES.map((s) => `
+    ${(adult ? [ADULT_STAGE, ...KID_STAGES] : KID_STAGES).map((s) => `
       <section class="stage stage-${s.id}">
         <h2><span class="badge">${s.short}</span> ${s.name}</h2>
         <div class="grid grades">
           ${s.grades.map((g) => `
             <a class="tile grade-tile${g === state.profile.grade ? ' current' : ''}" href="#/grade/${g}">
-              <span class="big">${g <= 4 ? g : g - 4}</span>
-              <span class="small">Klasse</span>
+              <span class="big">${isAdult(g) ? LEVELS[g] : g <= 4 ? g : g - 4}</span>
+              <span class="small">${isAdult(g) ? 'Niveau' : 'Klasse'}</span>
             </a>`).join('')}
         </div>
       </section>`).join('')}
@@ -211,12 +246,12 @@ async function gradesView() {
 async function gradeView(grade) {
   const stage = stageOf(grade);
   setHeader(classLabel(grade), '#/grades');
-  const topics = sortTopics(await db.topicsFor(state.lang, grade));
+  const topics = sortTopics(await topicsForGrade(grade));
   view.innerHTML = `
     <p class="lead"><span class="badge">${stage.short}</span> ${stage.name} · Schulstufe ${grade}</p>
     ${topics.length > 1 ? `<a class="card cta soft" href="#/mix/${grade}">
       <span class="emoji" aria-hidden="true">🎯</span>
-      <span><strong>Ganze Klasse üben</strong><small>Alle oder ausgewählte Themen gemischt</small></span>
+      <span><strong>${isAdult(grade) ? 'Ganzes Niveau üben' : 'Ganze Klasse üben'}</strong><small>Alle oder ausgewählte Themen gemischt</small></span>
       <span class="go" aria-hidden="true">›</span>
     </a>` : ''}
     ${topics.length ? await topicTiles(topics) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
@@ -305,7 +340,7 @@ async function mixView(grade) {
   const p = state.profile;
   const back = grade === p.grade ? '#/' : `#/grade/${grade}`;
   setHeader(`${classLabel(grade)} üben`, back);
-  const topics = sortTopics(await db.topicsFor(state.lang, grade));
+  const topics = sortTopics(await topicsForGrade(grade));
   const counts = await Promise.all(topics.map(async (t) => (await db.vocabFor(t.id)).length));
   const saved = await db.getMeta(`mix:${p.id}:${grade}`, null);
   const chosen = new Set(saved?.topics ?? topics.map((t) => t.id));
@@ -318,7 +353,7 @@ async function mixView(grade) {
           ${topics.map((t, i) => `<label class="choice"><input type="checkbox" name="t" value="${esc(t.id)}"${chosen.has(t.id) ? ' checked' : ''}><span><strong>${esc(t.icon || '📘')} ${esc(t.title)}</strong><small>${counts[i]} Wörter</small></span></label>`).join('')}
         </div>
       </section>
-      ${grade > 1 ? `<label class="choice card"><input type="checkbox" name="prev"${saved?.prev ? ' checked' : ''}><span><strong>Auch alle früheren Klassen</strong><small>Gesamter Stoff bis ${classLabel(grade)}, die unsichersten Wörter zuerst</small></span></label>` : ''}
+      ${gradesBelow(grade).length ? `<label class="choice card"><input type="checkbox" name="prev"${saved?.prev ? ' checked' : ''}><span><strong>${isAdult(grade) ? 'Auch alle niedrigeren Niveaus' : 'Auch alle früheren Klassen'}</strong><small>Gesamter Stoff bis ${classLabel(grade)}, die unsichersten Wörter zuerst</small></span></label>` : ''}
       <section class="card">
         <h2>Wie viele Wörter?</h2>
         <div class="segmented">
@@ -333,7 +368,8 @@ async function mixView(grade) {
   const form = view.querySelector('form');
   const info = view.querySelector('#mix-info');
   const selected = () => [...form.querySelectorAll('input[name=t]:checked')].map((el) => el.value);
-  const earlier = grade > 1 ? (await db.all('topics')).filter((t) => t.lang === state.lang && t.grade < grade) : [];
+  const below = new Set(gradesBelow(grade));
+  const earlier = (await db.all('topics')).filter((t) => t.lang === state.lang && below.has(t.grade));
   const earlierCount = (await Promise.all(earlier.map((t) => db.vocabFor(t.id)))).reduce((n, l) => n + l.length, 0);
   const update = () => {
     const ids = new Set(selected());
@@ -501,11 +537,25 @@ async function settingsView() {
           </label>`).join('')}
       </div>
     </section>
+    ${isAdult(p.grade) ? `<section class="card form">
+      <h2>Lernen</h2>
+      <label class="field"><span>Niveau</span>
+        <select name="level">${ADULT_STAGE.grades.map((g) => `<option value="${g}"${g === p.grade ? ' selected' : ''}>${LEVELS[g]}</option>`).join('')}</select>
+      </label>
+      <label class="field"><span>Tagesziel in Minuten</span>
+        <select name="minutes">${[5, 10, 15, 20, 30, 45, 60].map((n) => `<option value="${n}"${n === (p.dailyMinutes || profiles.DEFAULT_MINUTES) ? ' selected' : ''}>${n} Minuten</option>`).join('')}</select>
+      </label>
+      <label class="choice">
+        <input type="checkbox" name="strict"${p.strict ? ' checked' : ''}>
+        <span><strong>Streng prüfen</strong><small>Tippfehler zählen als falsch, und ein Fehler muss zweimal richtig beantwortet werden.</small></span>
+      </label>
+      <a class="btn" href="#/placement">🧭 Einstufungstest machen</a>
+    </section>` : ''}
     <section class="card">
       <h2>Aussprache</h2>
       <label class="choice">
         <input type="checkbox" name="speak"${p.autoSpeak ? ' checked' : ''}>
-        <span><strong>Englische Wörter automatisch vorlesen</strong><small>Mit 🔊 kann man jedes Wort auch selbst anhören.</small></span>
+        <span><strong>Englisch automatisch vorlesen</strong><small>Wörter beim Anzeigen, beim Umdrehen und bei Fehlern auch den Beispielsatz. Mit 🔊 kann man alles selbst anhören.</small></span>
       </label>
     </section>
     <section class="card">
@@ -519,9 +569,12 @@ async function settingsView() {
       </div>
       <p class="hint">Weitere Sprachen folgen.</p>
     </section>
-    <a class="btn more-link" href="#/profiles">👥 Kind wechseln</a>
-    <a class="btn more-link parents-link" href="#/parents">🔒 Elternbereich</a>
+    <a class="btn more-link" href="#/profiles">👥 ${isAdult(p.grade) ? 'Profil' : 'Kind'} wechseln</a>
+    ${isAdult(p.grade) ? '' : '<a class="btn more-link parents-link" href="#/parents">🔒 Elternbereich</a>'}
   `;
+  view.querySelector('select[name=level]')?.addEventListener('change', async (e) => { p.grade = Number(e.target.value); await profiles.save(p); });
+  view.querySelector('select[name=minutes]')?.addEventListener('change', async (e) => { p.dailyMinutes = Number(e.target.value); await profiles.save(p); });
+  view.querySelector('input[name=strict]')?.addEventListener('change', async (e) => { p.strict = e.target.checked; await profiles.save(p); });
   view.querySelectorAll('input[name=theme]').forEach((el) => el.addEventListener('change', async () => {
     p.theme = el.value; await profiles.save(p); applyTheme();
   }));
@@ -546,6 +599,8 @@ const routes = [
   [/^#\/learn\/([^/]+)\/repeat$/, (m) => learnView(decodeURIComponent(m[1]), true)],
   [/^#\/learn\/([^/]+)$/, (m) => learnView(decodeURIComponent(m[1]), false)],
   [/^#\/review$/, () => reviewView()],
+  [/^#\/placement$/, () => placementView({ view, setHeader, lang: state.lang, refresh: refreshProfile }, state.profile)],
+  [/^#\/stats$/, () => selfStatsView({ view, setHeader, lang: state.lang }, state.profile)],
   [/^#\/mix\/(\d+)$/, (m) => mixView(Number(m[1]))],
   [/^#\/exam\/([^/]+)\/(prep|test)$/, (m) => examRunView(decodeURIComponent(m[1]), m[2])],
   [/^#\/exam\/([^/]+)$/, (m) => examView(decodeURIComponent(m[1]))],
@@ -583,6 +638,8 @@ async function start() {
   state.profile = await profiles.current();
   applyTheme();
   document.getElementById('settings-btn').onclick = () => { location.hash = '#/settings'; };
+  // First start or new word lists: loading thousands of entries takes a moment.
+  view.innerHTML = '<p class="empty">Wörter werden geladen …</p>';
   await seed(state.lang);
   db.persist();
   window.addEventListener('hashchange', route);

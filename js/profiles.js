@@ -5,6 +5,7 @@ import { schoolYear } from './srs.js';
 
 export const AVATARS = ['🦊', '🐼', '🐯', '🐸', '🦄', '🐙', '🐨', '🦁', '🐵', '🐧', '🐶', '🐱', '🐰', '🐢', '🦖', '🚀', '⚽', '🎸'];
 export const DEFAULT_GOAL = 20;
+export const DEFAULT_MINUTES = 15;
 
 export async function list() {
   return (await db.all('profiles')).sort((a, b) => a.created - b.created);
@@ -32,6 +33,8 @@ export async function create({ name, avatar, grade }) {
     mode: grade <= 4 ? 'choice' : 'cards', direction: 'en-de', autoSpeak: true,
     tasks: [], exams: [], created: Date.now(), gradeYear: schoolYear(),
   };
+  // Adults (levels 21–24): typing by default, no typo tolerance, goal in minutes.
+  if (grade > 20) Object.assign(p, { mode: 'write', strict: true, dailyMinutes: DEFAULT_MINUTES });
   await db.put('profiles', p);
   await select(p.id);
   return p;

@@ -43,19 +43,21 @@ export async function childSummary(p) {
   };
 }
 
-function barChart(last14, goal) {
-  const max = Math.max(goal, ...last14.map((d) => d.answers), 1);
+// unit 'minutes' (adults) charts learning time instead of answers.
+function barChart(last14, goal, unit = 'answers') {
+  const val = (d) => (unit === 'minutes' ? (d.answers ? minutes(d.ms) : 0) : d.answers);
+  const max = Math.max(goal, ...last14.map(val), 1);
   return `
-    <figure class="chart" aria-label="Antworten pro Tag, letzte 14 Tage">
+    <figure class="chart" aria-label="${unit === 'minutes' ? 'Minuten' : 'Antworten'} pro Tag, letzte 14 Tage">
       <div class="bars">
         ${last14.map((d) => {
-          const h = (d.answers / max) * 100;
+          const h = (val(d) / max) * 100;
           const label = `${WEEKDAY[d.date.getDay()]} ${fmtDate(d.date)}: ${d.answers} Antworten${d.answers ? `, ${pct(d.right, d.answers)} % richtig, ca. ${minutes(d.ms)} Min.` : ''}`;
           return `<button class="bar-col" type="button" data-tip="${esc(label)}" aria-label="${esc(label)}">
-            <span class="bar-fill${d.answers >= goal ? ' met' : ''}" style="height:${h}%"></span>
+            <span class="bar-fill${val(d) >= goal ? ' met' : ''}" style="height:${h}%"></span>
           </button>`;
         }).join('')}
-        <span class="goal-line" style="bottom:${(goal / max) * 100}%"><span>Ziel ${goal}</span></span>
+        <span class="goal-line" style="bottom:${(goal / max) * 100}%"><span>Ziel ${goal}${unit === 'minutes' ? ' Min.' : ''}</span></span>
       </div>
       <div class="bar-labels">${last14.map((d, i) => `<span>${i === 13 ? 'heute' : (13 - i) % 2 ? '' : WEEKDAY[d.date.getDay()]}</span>`).join('')}</div>
       <figcaption class="chart-tip" aria-live="polite">Tippe auf einen Balken für Details.</figcaption>
@@ -217,6 +219,52 @@ export function modeSection(stats, who = 'das Kind') {
       ${weak ? `<p class="hint">👉 <b>${MODES.find((m) => m.id === weak.mode)?.name}</b> klappt erst zu ${weak.rate} %. Das sollte ${who} öfter üben.</p>` : '<p class="hint">Keine Übungsart fällt deutlich ab.</p>'}`
       : '<p class="hint">Noch keine Antworten in den letzten 30 Tagen.</p>'}
     </section>`;
+}
+
+// Adults: their own statistics, without the parents' controls.
+export async function selfStatsView(ctx, p) {
+  const { view } = ctx;
+  ctx.setHeader('Meine Statistik', '#/');
+  const s = await childSummary(p);
+  const topics = await topicRows(p, s.progress);
+  const problems = await problemWords(s.all);
+  const goal = p.dailyMinutes || profiles.DEFAULT_MINUTES;
+  view.innerHTML = `
+    <p class="lead">${classLabel(p.grade)}<br>${s.last ? `zuletzt gelernt ${fmtDateTime(s.last)}` : 'Noch nicht gelernt.'}</p>
+    <div class="kpis">
+      <div class="kpi"><b>${s.weekMinutes}</b><span>Minuten (7 Tage)</span></div>
+      <div class="kpi"><b>${s.weekQuote} %</b><span>richtig (7 Tage)</span></div>
+      <div class="kpi"><b>${s.learned}</b><span>Wörter gelernt, ${s.solid} sicher</span></div>
+      ${s.sentencesSeen ? `<div class="kpi"><b>${s.sentencesLearned}/${s.sentencesSeen}</b><span>Sätze sicher/geübt</span></div>` : ''}
+      <div class="kpi"><b>${s.streak}</b><span>Tage in Folge</span></div>
+    </div>
+    ${modeSection(srs.modeStats(s.sessions), 'du')}
+    <section class="card">
+      <h2>Lernzeit pro Tag</h2>
+      ${barChart(s.last14, goal, 'minutes')}
+      <p class="hint">${s.due ? `${pl(s.due, 'Eintrag ist', 'Einträge sind')} zum Wiederholen fällig.` : 'Nichts überfällig.'}</p>
+    </section>
+    <section class="card">
+      <h2>Schwierige Wörter und Sätze</h2>
+      ${problems.length ? `<ul class="wordlist">
+        ${problems.map(({ w, r }) => `<li><span class="term">${esc(plain(w.term, 'en'))}</span><span class="trans">${esc(plain(w.translation, 'de'))}</span><span class="badge-soft">${r.wrong}× falsch</span></li>`).join('')}
+      </ul><p class="hint">Diese kommen unter „Heute wiederholen“ automatisch öfter.</p>` : '<p class="hint">Noch nichts, das öfter falsch war.</p>'}
+    </section>
+    <section class="card">
+      <h2>Themen</h2>
+      ${topics.length ? `<ul class="topic-progress">
+        ${topics.map((r) => `
+          <li>
+            <span class="tp-name">${esc(r.t.icon || '📘')} ${esc(r.t.title)} <small>${classLabel(r.t.grade)}</small></span>
+            <span class="tp-bar"><span style="width:${pct(r.learned, r.total)}%"></span></span>
+            <span class="tp-num">${r.learned}/${r.total}</span>
+          </li>`).join('')}
+      </ul>` : '<p class="hint">Noch kein Thema begonnen.</p>'}
+    </section>`;
+  const tip = view.querySelector('.chart-tip');
+  view.querySelectorAll('.bar-col').forEach((b) => {
+    b.addEventListener('click', () => { tip.textContent = b.dataset.tip; view.querySelectorAll('.bar-col').forEach((x) => x.classList.toggle('active', x === b)); });
+  });
 }
 
 async function shareText(name, text) {

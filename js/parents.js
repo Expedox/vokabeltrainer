@@ -187,7 +187,8 @@ async function dashboard(ctx) {
     if (!t.builtin || own) custom.push({ ...t, own, total: words.length });
   }
   custom.sort((a, b) => a.grade - b.grade || a.title.localeCompare(b.title, 'de'));
-  const kids = await profiles.list();
+  // Adults (levels) manage themselves and don't show up here.
+  const kids = (await profiles.list()).filter((k) => k.grade <= 12);
   const sums = await Promise.all(kids.map(childSummary));
   const lastBackup = await db.getMeta('lastBackup');
   const needBackup = kids.length && sums.some((x) => x.sessions.length) && (!lastBackup || Date.now() - lastBackup > 30 * 864e5);

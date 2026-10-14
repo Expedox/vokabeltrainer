@@ -94,6 +94,40 @@ def main():
             if sents:
                 by_key[key]['sentences'] = sents
             topics.append(by_key[key])
+    # Adult content: erwachsene/niveau-A1.json … (same shape, "level" instead of
+    # "grade"); levels are stored as grades 21–24.
+    adir = os.path.join(os.path.dirname(os.path.abspath(src)), 'erwachsene')
+    levels = {'A1': 21, 'A2': 22, 'B1': 23, 'B2': 24}
+    for path in sorted(glob.glob(os.path.join(adir, 'niveau-*.json'))):
+        data = json.load(open(path, encoding='utf-8'))
+        grade = levels[data['level'].upper()]
+        for t in data['topics']:
+            words = []
+            seen = set()
+            for w in t.get('words', []):
+                term, trans = (w.get(lang) or '').strip(), (w.get('de') or '').strip()
+                if not term or not trans or term.lower() in seen:
+                    continue
+                seen.add(term.lower())
+                note = (w.get('note') or '').strip()
+                words.append([term, trans, note] if note else [term, trans])
+            sents = []
+            for x in t.get('sentences', []):
+                en, de = (x.get(lang) or '').strip(), (x.get('de') or '').strip()
+                dis = [d.strip() for d in x.get('distractors', []) if d and d.strip() and d.strip() != en][:3]
+                if en and de and dis:
+                    why = [(w or '').strip() for w in x.get('why', [])][:len(dis)]
+                    sents.append([en, de, dis, why] if any(why) else [en, de, dis])
+            topic = {'grade': grade, 'title': t['title_de'].strip(), 'icon': icon_for(t), 'words': words}
+            if sents:
+                topic['sentences'] = sents
+            topics.append(topic)
+    test = os.path.join(adir, 'einstufungstest.json')
+    if os.path.exists(test):
+        q = json.load(open(test, encoding='utf-8'))['questions']
+        with open(os.path.join(os.path.dirname(__file__), '..', 'data', f'placement-{lang}.json'), 'w', encoding='utf-8') as f:
+            json.dump({'questions': q}, f, ensure_ascii=False)
+
     out = {'version': datetime.datetime.now().strftime('%Y-%m-%d.%H%M'), 'lang': lang, 'topics': topics}
     dest = os.path.join(os.path.dirname(__file__), '..', 'data', f'{lang}.json')
     with open(dest, 'w', encoding='utf-8') as f:

@@ -472,3 +472,5 @@ mark.good { background: color-mix(in srgb, #3fae5a 28%, transparent); color: inh
 .nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; margin: 12px 0; }
 .modes-stats li.weak .tp-name { font-weight: 800; }
 .modes-stats li.weak .tp-bar span { background: #e5534b; }
+.speak-note { border: 0; background: none; font-size: 1em; padding: 0 2px; cursor: pointer; vertical-align: baseline; }
+.done .topic-progress { width: 100%; text-align: left; }

@@ -89,6 +89,9 @@ export async function runSession(view, opts) {
   const queue = shuffle(words.slice()).sort((a, b) => progress.get(a.id).box - progress.get(b.id).box);
   const total = queue.length;
   const missed = new Set();
+  // Strict (adults): typos count as wrong, a missed word must be right twice more.
+  const strict = Boolean(profile.strict);
+  const needs = new Map();
   let known = 0;
   let answered = false;
   let busy = false;
@@ -106,7 +109,12 @@ export async function runSession(view, opts) {
     root.querySelectorAll('.speak').forEach((b) => {
       b.onclick = (e) => { e.stopPropagation(); speak(b.dataset.say); };
     });
+    root.querySelectorAll('.speak-note').forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); speakAll([b.dataset.say]); };
+    });
   }
+  // Example sentence with its own read-aloud button.
+  const noteHtml = (w) => (w.note ? `<span class="note">${esc(w.note)}${canSpeak() ? ` <button class="speak-note" data-say="${esc(w.note)}" aria-label="Satz vorlesen">🔊</button>` : ''}</span>` : '');
 
   function frame(inner) {
     view.innerHTML = `
@@ -145,7 +153,7 @@ export async function runSession(view, opts) {
         <div class="face back">
           ${englishOn('back') ? speakBtn(w) : ''}
           <span class="word">${esc(back(w))}</span>
-          ${w.note ? `<span class="note">${esc(w.note)}</span>` : ''}
+          ${noteHtml(w)}
         </div>
       </div>
       <div class="answers" hidden>
@@ -159,7 +167,7 @@ export async function runSession(view, opts) {
       flipped = true;
       card.classList.add('flipped');
       view.querySelector('.answers').hidden = false;
-      if (opts.autoSpeak && englishOn('back')) speak(w.term);
+      if (opts.autoSpeak) speakAll(englishOn('back') ? [w.term, w.note] : [w.note]);
     };
     card.onclick = flip;
     if (opts.autoSpeak && englishOn('front')) speak(w.term);
@@ -238,7 +246,8 @@ export async function runSession(view, opts) {
       e.preventDefault();
       if (answered) return;
       if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
-      settle(check(input.value, rawBack(w)));
+      const res = check(input.value, rawBack(w));
+      settle(strict && res.ok && !res.exact ? { ok: false, hint: res.hint } : res);
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle({ ok: false }); };
     // Tip: first letter, then the rest as blanks ("H _ _ _"); a second tap shows one more letter.
@@ -397,14 +406,16 @@ export async function runSession(view, opts) {
     box.innerHTML = ok
       ? `<strong>${pick(CHEER[t])}</strong>${hint ? `<span>${esc(hint)}</span>` : ''}`
       : `<strong>${quiet ? 'Kommt gleich nochmal.' : pick(COMFORT[t])}</strong>
+         ${hint && !spelled ? `<span>${esc(hint)}</span>` : ''}
          ${isSentence(w) ? `<span class="solution sentence-solution">${given ? diffHtml(w.term, given, 'good') : esc(w.term)} ${speakBtn(w)}</span>${why ? `<span class="why">💡 ${esc(why)}</span>` : ''}`
            : spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
            : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`}
-         ${w.note && !isSentence(w) ? `<span class="note">${esc(w.note)}</span>` : ''}
+         ${isSentence(w) ? '' : noteHtml(w)}
          <button class="btn primary" id="next">Weiter</button>`;
     box.hidden = false;
     wireSpeak(box);
-    if (opts.autoSpeak && (ok ? (englishOn('back') || isSentence(w)) && mode !== 'spell' : true)) speak(w.term);
+    if (opts.autoSpeak && ok && (englishOn('back') || isSentence(w)) && mode !== 'spell') speak(w.term);
+    if (opts.autoSpeak && !ok) speakAll(isSentence(w) ? [w.term] : [w.term, w.note]);
     given = ''; why = '';
     if (ok) {
       setTimeout(() => answer(true), hint ? 1700 : isSentence(w) ? 1600 : 900);
@@ -422,9 +433,14 @@ export async function runSession(view, opts) {
     const w = queue.shift();
     const p = progress.get(w.id);
     srs.applyAnswer(p, ok, missed.has(w.id));
-    if (ok) known++;
+    if (ok && needs.get(w.id) > 1) {
+      // Strict: right again, but it has to sit, so it comes back once more.
+      needs.set(w.id, needs.get(w.id) - 1);
+      queue.splice(Math.min(5, queue.length), 0, w);
+    } else if (ok) known++;
     else {
       missed.add(w.id);
+      if (strict && !opts.exam) needs.set(w.id, 2);
       // In a test every word is asked once; otherwise missed words come back.
       if (opts.exam) known++;
       else queue.splice(Math.min(3, queue.length), 0, w);
