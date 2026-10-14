@@ -2,7 +2,7 @@ import * as db from './db.js';
 import * as srs from './srs.js';
 import * as profiles from './profiles.js';
 import { LANGUAGES, seed } from './seed.js';
-import { esc, STAGES, THEMES, stageOf, classLabel } from './util.js';
+import { esc, plain, STAGES, THEMES, stageOf, classLabel } from './util.js';
 import { parentsRoute, lock } from './parents.js';
 import { runSession, MODES } from './learn.js';
 
@@ -238,12 +238,12 @@ async function topicView(topicId) {
   const list = view.querySelector('#words');
   const drawList = () => {
     const deEn = state.profile.direction === 'de-en';
-    const sorted = words.slice().sort((a, b) => (deEn ? a.translation.localeCompare(b.translation, 'de') : a.term.localeCompare(b.term, 'en')));
+    const sorted = words.slice().sort((a, b) => (deEn ? plain(a.translation, 'de').localeCompare(plain(b.translation, 'de'), 'de') : plain(a.term, 'en').localeCompare(plain(b.term, 'en'), 'en')));
     list.innerHTML = sorted.map((w) => {
       const pr = progress.get(w.id);
       const mark = srs.needsRepeat(pr) ? '<span class="dot wrong" title="wiederholen"></span>'
         : srs.isLearned(pr) ? '<span class="dot right" title="gelernt"></span>' : '<span class="dot"></span>';
-      const [a, b] = deEn ? [w.translation, w.term] : [w.term, w.translation];
+      const [a, b] = deEn ? [plain(w.translation, 'de'), plain(w.term, 'en')] : [plain(w.term, 'en'), plain(w.translation, 'de')];
       return `<li>${mark}<span class="term">${esc(a)}</span><span class="trans">${esc(b)}</span></li>`;
     }).join('');
   };

@@ -24,3 +24,10 @@ export function classLabel(grade) {
   if (grade <= 8) return `${grade - 4}. Klasse`;
   return `${grade - 4}. Klasse AHS`;
 }
+
+// Display form of a word: no German article, no English "to" before verbs.
+// The stored data keeps both; answers are accepted with or without them.
+export function plain(text, lang) {
+  const re = lang === 'en' ? /^to\s+/i : /^(der|die|das)\s+/;
+  return String(text).split(/\s*\/\s*/).map((part) => part.replace(re, '')).join(' / ');
+}

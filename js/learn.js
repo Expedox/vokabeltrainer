@@ -7,7 +7,7 @@
 
 import * as db from './db.js';
 import * as srs from './srs.js';
-import { esc } from './util.js';
+import { esc, plain } from './util.js';
 import { speak, canSpeak } from './speech.js';
 import { check } from './check.js';
 
@@ -81,8 +81,10 @@ export async function runSession(view, opts) {
   let busy = false;
   let keys = {};
 
-  const front = (w) => (direction === 'de-en' ? w.translation : w.term);
-  const back = (w) => (direction === 'de-en' ? w.term : w.translation);
+  // Shown without "der/die/das" and "to"; the check still uses the full answer.
+  const rawBack = (w) => (direction === 'de-en' ? w.term : w.translation);
+  const front = (w) => (direction === 'de-en' ? plain(w.translation, 'de') : plain(w.term, 'en'));
+  const back = (w) => (direction === 'de-en' ? plain(w.term, 'en') : plain(w.translation, 'de'));
   const englishOn = (side) => (direction === 'de-en') === (side === 'back');
   const speakBtn = (w) => (canSpeak() ? `<button class="speak" data-say="${esc(w.term)}" aria-label="Vorlesen">🔊</button>` : '');
 
@@ -202,7 +204,9 @@ export async function runSession(view, opts) {
     if (opts.autoSpeak && englishOn('front')) speak(w.term);
     const form = view.querySelector('form');
     const input = form.answer;
-    setTimeout(() => input.focus(), 50);
+    // English verbs: "to " is already there, the child only types the verb.
+    if (direction === 'de-en' && /^to\s/i.test(w.term)) input.value = 'to ';
+    setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }, 50);
     const settle = (res) => {
       input.disabled = true;
       input.classList.add(res.ok ? 'is-right' : 'is-wrong');
@@ -212,8 +216,8 @@ export async function runSession(view, opts) {
     form.onsubmit = (e) => {
       e.preventDefault();
       if (answered) return;
-      if (!input.value.trim()) { input.focus(); return; }
-      settle(check(input.value, back(w)));
+      if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
+      settle(check(input.value, rawBack(w)));
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle({ ok: false }); };
     // Tip: first letter, then the rest as blanks ("H _ _ _"); a second tap shows one more letter.

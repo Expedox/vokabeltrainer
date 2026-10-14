@@ -3,7 +3,7 @@
 import * as db from './db.js';
 import * as srs from './srs.js';
 import * as profiles from './profiles.js';
-import { esc, STAGES, classLabel } from './util.js';
+import { esc, plain, STAGES, classLabel } from './util.js';
 import { saveFile } from './io.js';
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -132,7 +132,7 @@ export async function childView(ctx, id) {
     <section class="card">
       <h2>Schwierige Wörter</h2>
       ${problems.length ? `<ul class="wordlist">
-        ${problems.map(({ w, r }) => `<li><span class="term">${esc(w.term)}</span><span class="trans">${esc(w.translation)}</span><span class="badge-soft">${r.wrong}× falsch</span></li>`).join('')}
+        ${problems.map(({ w, r }) => `<li><span class="term">${esc(plain(w.term, 'en'))}</span><span class="trans">${esc(plain(w.translation, 'de'))}</span><span class="badge-soft">${r.wrong}× falsch</span></li>`).join('')}
       </ul><p class="hint">Diese Wörter kommen beim Kind unter „Heute wiederholen“ automatisch öfter.</p>` : '<p class="hint">Noch keine Wörter, die öfter falsch waren.</p>'}
     </section>
 

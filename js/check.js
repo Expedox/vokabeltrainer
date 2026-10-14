@@ -37,12 +37,10 @@ export function check(input, expected) {
   for (const alt of alternatives(expected)) {
     const want = normalize(alt);
     if (given === want) return { ok: true, exact: true };
-    if (bare(given) === bare(alt)) {
-      const hadArticle = ARTICLES.test(want) && !ARTICLES.test(given);
-      return { ok: true, exact: false, hint: hadArticle ? `Mit Artikel: ${alt}` : `Genau: ${alt}` };
-    }
+    // Articles and "to" are optional: "Hund" = "der Hund", "go" = "to go".
+    if (bare(given) === bare(alt)) return { ok: true, exact: true };
     const b = bare(alt);
-    if (b.length >= 5 && distance(bare(given), b) === 1) return { ok: true, exact: false, hint: `Fast! Richtig geschrieben: ${alt}` };
+    if (b.length >= 5 && distance(bare(given), b) === 1) return { ok: true, exact: false, hint: `Fast! Richtig geschrieben: ${alt.replace(ARTICLES, '')}` };
   }
   return { ok: false, exact: false };
 }
