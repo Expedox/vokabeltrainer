@@ -1,0 +1,33 @@
+{
+  "version": "2026-10-14.1",
+  "lang": "en",
+  "topics": [
+    { "grade": 1, "title": "Farben", "icon": "🎨", "words": [
+      ["red", "rot"], ["blue", "blau"], ["yellow", "gelb"], ["green", "grün"],
+      ["orange", "orange"], ["pink", "rosa"], ["purple", "lila"], ["brown", "braun"],
+      ["black", "schwarz"], ["white", "weiß"], ["grey", "grau"]
+    ]},
+    { "grade": 1, "title": "Zahlen 1–10", "icon": "🔢", "words": [
+      ["one", "eins"], ["two", "zwei"], ["three", "drei"], ["four", "vier"], ["five", "fünf"],
+      ["six", "sechs"], ["seven", "sieben"], ["eight", "acht"], ["nine", "neun"], ["ten", "zehn"]
+    ]},
+    { "grade": 1, "title": "Tiere", "icon": "🐶", "words": [
+      ["dog", "der Hund"], ["cat", "die Katze"], ["mouse", "die Maus"], ["bird", "der Vogel"],
+      ["fish", "der Fisch"], ["horse", "das Pferd"], ["cow", "die Kuh"], ["pig", "das Schwein"],
+      ["rabbit", "der Hase"], ["duck", "die Ente"]
+    ]},
+    { "grade": 5, "title": "My family", "icon": "👨‍👩‍👧", "words": [
+      ["mother", "die Mutter"], ["father", "der Vater"], ["sister", "die Schwester"],
+      ["brother", "der Bruder"], ["grandmother", "die Großmutter"], ["grandfather", "der Großvater"],
+      ["aunt", "die Tante"], ["uncle", "der Onkel"], ["cousin", "der Cousin / die Cousine"],
+      ["parents", "die Eltern"]
+    ]},
+    { "grade": 9, "title": "Media", "icon": "📱", "words": [
+      ["social media", "soziale Medien"], ["newspaper", "die Zeitung"],
+      ["headline", "die Schlagzeile"], ["reliable", "verlässlich"],
+      ["fake news", "Falschmeldungen"], ["to broadcast", "senden, ausstrahlen"],
+      ["audience", "das Publikum"], ["advertisement", "die Werbung"],
+      ["privacy", "die Privatsphäre"], ["to influence", "beeinflussen"]
+    ]}
+  ]
+}

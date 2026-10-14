@@ -1,0 +1,173 @@
+/* Three looks, switched via body[data-theme]. Everything else reads tokens. */
+
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --gap: 16px;
+}
+
+body[data-theme="kids"] {
+  --font: ui-rounded, "SF Pro Rounded", "Nunito", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --bg: #fff8ec;
+  --surface: #ffffff;
+  --text: #2d2a26;
+  --muted: #7a6f63;
+  --accent: #ff8a3d;
+  --accent-text: #ffffff;
+  --border: #f1e2cc;
+  --radius: 24px;
+  --size: 20px;
+  --tile-size: 2.6rem;
+  --vs: #ffb703; --us: #8ecae6; --os: #b5e48c;
+  --shadow: 0 4px 0 #f1e2cc;
+}
+
+body[data-theme="teen"] {
+  --bg: #f3f5ff;
+  --surface: #ffffff;
+  --text: #1c1f33;
+  --muted: #5c6283;
+  --accent: #5b5bf0;
+  --accent-text: #ffffff;
+  --border: #dfe3fb;
+  --radius: 16px;
+  --size: 18px;
+  --tile-size: 2.1rem;
+  --vs: #ffcf70; --us: #8f8ff7; --os: #4fd1c5;
+  --shadow: 0 2px 8px rgba(40, 40, 120, .08);
+}
+
+body[data-theme="adult"] {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #646a73;
+  --accent: #2f6f5e;
+  --accent-text: #ffffff;
+  --border: #e3e3df;
+  --radius: 10px;
+  --size: 17px;
+  --tile-size: 1.8rem;
+  --vs: #d9cba3; --us: #a9bcd0; --os: #2f6f5e;
+  --shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  body[data-theme="teen"] {
+    --bg: #14152a; --surface: #1f2140; --text: #eef0ff; --muted: #a3a8cc;
+    --border: #2e3160; --accent: #8a8aff; --accent-text: #0e0f20;
+  }
+  body[data-theme="adult"] {
+    --bg: #161718; --surface: #202224; --text: #e8e8e6; --muted: #9a9fa6;
+    --border: #2f3134; --accent: #6fbfa8; --accent-text: #0f1513;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--size)/1.4 var(--font);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+a { color: inherit; text-decoration: none; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) var(--gap) 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.topbar h1 { flex: 1; margin: 0; font-size: 1.15em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.icon-btn {
+  width: 44px; height: 44px; flex: none;
+  border: 0; border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  font-size: 1.5rem; line-height: 1; cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+main { max-width: 900px; margin: 0 auto; padding: var(--gap); outline: none; }
+
+.lead { font-size: 1.1em; color: var(--muted); margin: 4px 0 16px; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+.hint { color: var(--muted); font-size: .85em; margin: 8px 0 0; }
+
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-text);
+  font-size: .75em; font-weight: 700; vertical-align: middle;
+}
+
+.stage { margin-bottom: 24px; }
+.stage h2 { font-size: 1.05em; margin: 0 0 10px; }
+.stage-vs .badge { background: var(--vs); color: #2d2a26; }
+.stage-us .badge { background: var(--us); color: #1c1f33; }
+.stage-os .badge { background: var(--os); color: #1f2328; }
+body[data-theme="adult"] .stage-os .badge { color: #fff; }
+
+.grid { display: grid; gap: 12px; }
+.grades { grid-template-columns: repeat(4, 1fr); }
+.topics { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+.tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 14px 8px; min-height: 96px; text-align: center;
+  background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: transform .1s;
+}
+.tile:active { transform: scale(.97); }
+.tile.current { border-color: var(--accent); }
+.tile .big { font-size: var(--tile-size); font-weight: 800; line-height: 1; }
+.tile .small { font-size: .7em; color: var(--muted); }
+.tile .name { font-weight: 700; }
+.emoji { font-size: 2.2rem; line-height: 1; }
+.big-emoji { font-size: 3.5rem; }
+
+.stage-vs .grade-tile .big { color: #e08a00; }
+.stage-us .grade-tile .big { color: #4a7ea0; }
+.stage-os .grade-tile .big { color: #4c8a34; }
+body[data-theme="teen"] .stage-us .grade-tile .big,
+body[data-theme="adult"] .grade-tile .big { color: var(--text); }
+
+body[data-theme="kids"] .tile { border-width: 3px; }
+body[data-theme="adult"] .tile { align-items: flex-start; text-align: left; padding: 14px; }
+body[data-theme="adult"] .grade-tile { align-items: center; text-align: center; }
+body[data-theme="adult"] .emoji { font-size: 1.6rem; }
+
+.btn {
+  display: inline-block; padding: 12px 22px; border: 0; cursor: pointer;
+  border-radius: var(--radius); font: inherit; font-weight: 700;
+  background: var(--surface); color: var(--text); border: 2px solid var(--border);
+}
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+.topic-head { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+
+.wordlist { list-style: none; padding: 0; margin: 0; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); }
+.wordlist li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.wordlist li:first-child { border-top: 0; }
+.wordlist .term { font-weight: 700; }
+.wordlist .trans { color: var(--muted); text-align: right; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 12px; font-size: 1.05em; }
+.choices { display: grid; gap: 8px; }
+.choice { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 2px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); }
+.choice input { accent-color: var(--accent); width: 20px; height: 20px; }
+.choice span { display: flex; flex-direction: column; }
+.choice small { color: var(--muted); }
+
+@media (max-width: 380px) {
+  .grades { gap: 8px; }
+  .tile { min-height: 84px; padding: 10px 4px; }
+}
