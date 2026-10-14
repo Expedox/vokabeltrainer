@@ -58,6 +58,12 @@ export function findWord(term, sentence) {
   return null;
 }
 
+// The word as it stands in the sentence ("wakes up"), or null.
+export function gapWord(term, sentence) {
+  const hit = findWord(term, sentence);
+  return hit ? sentence.slice(hit.start, hit.end) : null;
+}
+
 // Sentence as HTML with the word replaced by a gap (or highlighted).
 export function sentenceHtml(term, sentence, mode = 'gap') {
   const hit = findWord(term, sentence);

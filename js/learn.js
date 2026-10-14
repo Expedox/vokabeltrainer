@@ -12,7 +12,8 @@ import * as srs from './srs.js';
 import { esc, plain } from './util.js';
 import { speak, speakAll, canSpeak, canListen, listen } from './speech.js';
 import { check } from './check.js';
-import { sentenceHtml, heardRight } from './bee.js';
+import { sentenceHtml, heardRight, gapWord } from './bee.js';
+import { normalize } from './check.js';
 
 export const MODES = [
   { id: 'cards', name: 'Karteikarten', icon: '🃏', hint: 'Umdrehen und selbst bewerten' },
@@ -248,8 +249,11 @@ export async function runSession(view, opts) {
   // ---- spell (spelling bee) ----
   // The word is read out, then the example sentence, then the word again.
   // The sentence is shown with a gap where the word is; the German meaning helps.
+  // The answer is the form in the gap ("goes"), so gap and input read as a
+  // correct sentence; the base form ("go") counts too.
   function renderSpell(w) {
-    const say = () => speakAll([w.term, w.note, w.term]);
+    const target = gapWord(w.term, w.note) ?? plain(w.term, 'en');
+    const say = () => speakAll([target, w.note, target]);
     frame(`
       <div class="prompt-card bee">
         ${pic(w)}
@@ -268,26 +272,26 @@ export async function runSession(view, opts) {
         </div>
       </form>
       <div class="feedback" hidden></div>`);
-    view.querySelector('#say-word')?.addEventListener('click', () => speak(w.term));
+    view.querySelector('#say-word')?.addEventListener('click', () => speak(target));
     view.querySelector('#say-sentence')?.addEventListener('click', () => speakAll([w.note]));
     say();
     const form = view.querySelector('form');
     const input = form.answer;
-    if (/^to\s/i.test(w.term)) input.value = 'to ';
-    setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }, 50);
+    setTimeout(() => input.focus(), 50);
     const settle = (ok, hint) => {
       input.disabled = true;
       input.classList.add(ok ? 'is-right' : 'is-wrong');
       form.querySelector('.row').hidden = true;
-      feedback(ok, w, hint, true);
+      feedback(ok, w, hint, target);
     };
     form.onsubmit = (e) => {
       e.preventDefault();
       if (answered) return;
-      if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
+      if (!input.value.trim()) { input.focus(); return; }
       // Spelling counts letter by letter: "almost" is not enough here.
       const res = check(input.value, w.term);
-      settle(res.exact, res.ok && !res.exact ? 'Ganz knapp, ein Buchstabe stimmt nicht.' : '');
+      const exact = normalize(input.value) === normalize(target) || res.exact;
+      settle(exact, !exact && (res.ok || check(input.value, target).ok) ? 'Ganz knapp, ein Buchstabe stimmt nicht.' : '');
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle(false); };
     keys = {};
@@ -366,7 +370,7 @@ export async function runSession(view, opts) {
 
   // Feedback for choice/write: right answers move on by themselves, wrong ones
   // wait for a tap so the child can read the solution.
-  // spelled: show the correct spelling letter by letter. quiet: no comfort text.
+  // spelled: the word to show letter by letter (spelling bee). quiet: no comfort text.
   function feedback(ok, w, hint, spelled = false, quiet = false) {
     answered = true;
     const box = view.querySelector('.feedback');
@@ -375,7 +379,7 @@ export async function runSession(view, opts) {
     box.innerHTML = ok
       ? `<strong>${pick(CHEER[t])}</strong>${hint ? `<span>${esc(hint)}</span>` : ''}`
       : `<strong>${quiet ? 'Kommt gleich nochmal.' : pick(COMFORT[t])}</strong>
-         ${spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${plain(w.term, 'en').split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
+         ${spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
            : (mode === 'speak' ? `<span class="solution"><b>${esc(plain(w.term, 'en'))}</b> ${speakBtn(w)}</span>` : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`)}
          ${w.note && mode !== 'speak' ? `<span class="note">${esc(w.note)}</span>` : ''}
          <button class="btn primary" id="next">Weiter</button>`;
