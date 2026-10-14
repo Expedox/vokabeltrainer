@@ -204,7 +204,8 @@ export async function childView(ctx, id) {
 export function modeSection(stats, who = 'das Kind') {
   const weak = srs.weakestMode(stats);
   const byId = new Map(stats.map((r) => [r.mode, r]));
-  const rows = MODES.map((m) => ({ m, r: byId.get(m.id) })).filter(({ r }) => r?.answers);
+  const kinds = [...MODES, { id: 'grammar', icon: '📐', name: 'Grammatik' }];
+  const rows = kinds.map((m) => ({ m, r: byId.get(m.id) })).filter(({ r }) => r?.answers);
   return `
     <section class="card">
       <h2>Übungsarten <small class="hint">letzte 30 Tage</small></h2>
@@ -216,7 +217,7 @@ export function modeSection(stats, who = 'das Kind') {
             <span class="tp-num">${r.rate} %</span>
           </li>`).join('')}
       </ul>
-      ${weak ? `<p class="hint">👉 <b>${MODES.find((m) => m.id === weak.mode)?.name}</b> klappt erst zu ${weak.rate} %. Das sollte ${who} öfter üben.</p>` : '<p class="hint">Keine Übungsart fällt deutlich ab.</p>'}`
+      ${weak ? `<p class="hint">👉 <b>${kinds.find((m) => m.id === weak.mode)?.name}</b> klappt erst zu ${weak.rate} %. Das sollte ${who} öfter üben.</p>` : '<p class="hint">Keine Übungsart fällt deutlich ab.</p>'}`
       : '<p class="hint">Noch keine Antworten in den letzten 30 Tagen.</p>'}
     </section>`;
 }

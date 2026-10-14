@@ -98,9 +98,16 @@ def main():
     # "grade"); levels are stored as grades 21–24.
     adir = os.path.join(os.path.dirname(os.path.abspath(src)), 'erwachsene')
     levels = {'A1': 21, 'A2': 22, 'B1': 23, 'B2': 24}
+    # Sentences may also come separately: saetze-A1.json, topics by id.
+    adult_sents = {}
+    for path in sorted(glob.glob(os.path.join(adir, 'saetze-*.json'))):
+        data = json.load(open(path, encoding='utf-8'))
+        for t in data['topics']:
+            adult_sents[(data['level'].upper(), t['id'])] = t.get('sentences', [])
     for path in sorted(glob.glob(os.path.join(adir, 'niveau-*.json'))):
         data = json.load(open(path, encoding='utf-8'))
-        grade = levels[data['level'].upper()]
+        level = data['level'].upper()
+        grade = levels[level]
         for t in data['topics']:
             words = []
             seen = set()
@@ -112,7 +119,7 @@ def main():
                 note = (w.get('note') or '').strip()
                 words.append([term, trans, note] if note else [term, trans])
             sents = []
-            for x in t.get('sentences', []):
+            for x in t.get('sentences', []) + adult_sents.get((level, t['id']), []):
                 en, de = (x.get(lang) or '').strip(), (x.get('de') or '').strip()
                 dis = [d.strip() for d in x.get('distractors', []) if d and d.strip() and d.strip() != en][:3]
                 if en and de and dis:
@@ -122,6 +129,16 @@ def main():
             if sents:
                 topic['sentences'] = sents
             topics.append(topic)
+    # Grammar chapters for adults: grammatik-A1.json … → data/grammar-<lang>.json
+    chapters = []
+    for path in sorted(glob.glob(os.path.join(adir, 'grammatik-*.json'))):
+        data = json.load(open(path, encoding='utf-8'))
+        for c in data['chapters']:
+            chapters.append({**c, 'level': data['level'].upper()})
+    order = list(levels)
+    chapters.sort(key=lambda c: order.index(c['level']))
+    with open(os.path.join(os.path.dirname(__file__), '..', 'data', f'grammar-{lang}.json'), 'w', encoding='utf-8') as f:
+        json.dump({'chapters': chapters}, f, ensure_ascii=False)
     test = os.path.join(adir, 'einstufungstest.json')
     if os.path.exists(test):
         q = json.load(open(test, encoding='utf-8'))['questions']
