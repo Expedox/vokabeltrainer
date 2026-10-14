@@ -3,6 +3,8 @@
 import * as db from './db.js';
 import { esc, STAGES, classLabel } from './util.js';
 import * as io from './io.js';
+import * as profiles from './profiles.js';
+import { childSummary, childView, tasksView, editChildView } from './child.js';
 
 const UNLOCK_MS = 10 * 60 * 1000;
 let unlockedUntil = 0;
@@ -183,11 +185,40 @@ async function dashboard(ctx) {
     if (!t.builtin || own) custom.push({ ...t, own, total: words.length });
   }
   custom.sort((a, b) => a.grade - b.grade || a.title.localeCompare(b.title, 'de'));
+  const kids = await profiles.list();
+  const sums = await Promise.all(kids.map(childSummary));
+  const lastBackup = await db.getMeta('lastBackup');
+  const needBackup = kids.length && sums.some((x) => x.sessions.length) && (!lastBackup || Date.now() - lastBackup > 30 * 864e5);
   view.innerHTML = `
+    ${needBackup ? `<a class="card cta warn" href="#/parents/export">
+      <span class="emoji" aria-hidden="true">💾</span>
+      <span><strong>Sicherung empfohlen</strong><small>${lastBackup ? 'Die letzte Sicherung ist über einen Monat alt.' : 'Es gibt noch keine Sicherung des Lernfortschritts.'}</small></span>
+      <span class="go" aria-hidden="true">›</span>
+    </a>` : ''}
+    <h3 class="section">Lernfortschritt</h3>
+    ${kids.length ? `<div class="kid-cards">
+      ${kids.map((k, i) => {
+        const s = sums[i];
+        const today = s.last14.at(-1).answers;
+        return `<a class="card kid-card" href="#/parents/child/${encodeURIComponent(k.id)}">
+          <span class="big-emoji">${esc(k.avatar)}</span>
+          <span class="kid-main">
+            <strong>${esc(k.name)}</strong>
+            <small>${classLabel(k.grade)}</small>
+            <span class="kid-facts">
+              <span>${today ? `heute ${today} Antworten` : 'heute noch nicht gelernt'}</span>
+              <span>${s.weekDays}/7 Tage · ${s.weekQuote} % richtig · ${s.learned} Wörter</span>
+            </span>
+          </span>
+          <span class="go" aria-hidden="true">›</span>
+        </a>`;
+      }).join('')}
+    </div>` : '<p class="hint">Noch kein Kind angelegt.</p>'}
+    <h3 class="section">Vokabeln verwalten</h3>
     <div class="grid actions">
       <a class="tile action" href="#/parents/add"><span class="emoji">✏️</span><span class="name">Vokabeln eingeben</span></a>
       <a class="tile action" href="#/parents/import"><span class="emoji">📥</span><span class="name">Datei importieren</span></a>
-      <a class="tile action" href="#/parents/export"><span class="emoji">📤</span><span class="name">Exportieren</span></a>
+      <a class="tile action" href="#/parents/export"><span class="emoji">📤</span><span class="name">Exportieren &amp; Sichern</span></a>
       <a class="tile action" href="#/parents/pin"><span class="emoji">🔑</span><span class="name">PIN ändern</span></a>
     </div>
     <section class="card">
@@ -363,7 +394,8 @@ to borrow;ausleihen;Can I borrow your pen?;6;School</pre>
 
 async function exportView(ctx) {
   const { view, lang } = ctx;
-  ctx.setHeader('Exportieren', '#/parents');
+  ctx.setHeader('Exportieren & Sichern', '#/parents');
+  const lastBackup = await db.getMeta('lastBackup');
   const pack = await io.collectCustom(lang);
   const count = pack.topics.reduce((n, t) => n + t.words.length, 0);
   const date = new Date().toISOString().slice(0, 10);
@@ -378,7 +410,32 @@ async function exportView(ctx) {
         </div>
         <p class="hint">Am iPhone öffnet sich das Teilen-Menü: „In Dateien sichern“, AirDrop oder Mail.</p>`
         : '<p class="hint">Es gibt noch keine eigenen Vokabeln zum Exportieren.</p>'}
+    </section>
+    <section class="card">
+      <h2>Komplette Sicherung</h2>
+      <p>Alle Kinder mit Lernfortschritt, eigene Vokabeln und der PIN in einer Datei. Damit kannst du auf ein neues Handy umziehen oder nach dem Löschen der Browserdaten alles zurückholen.</p>
+      <p class="hint">${lastBackup ? `Letzte Sicherung: ${new Date(lastBackup).toLocaleDateString('de-AT')}` : 'Noch keine Sicherung gemacht.'}</p>
+      <div class="stack">
+        <button class="btn primary" id="backup">💾 Sicherung speichern</button>
+        <label class="btn file-btn">♻️ Sicherung wiederherstellen<input type="file" id="restore" accept=".json,application/json" hidden></label>
+      </div>
+      <p class="toast" hidden></p>
     </section>`;
+  view.querySelector('#backup').onclick = async () => {
+    await io.saveFile(`vokabeltrainer-sicherung-${date}.json`, JSON.stringify(await io.makeBackup()), 'application/json');
+    await db.setMeta('lastBackup', Date.now());
+  };
+  view.querySelector('#restore').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!confirm('Alle Kinder, Lernfortschritte und eigenen Vokabeln auf diesem Gerät durch die Sicherung ersetzen?')) { e.target.value = ''; return; }
+    try {
+      const r = await io.restoreBackup(await file.text());
+      await ctx.refresh();
+      toast(view, `Wiederhergestellt: ${r.profiles} Kinder, ${r.words} eigene Vokabeln.`);
+    } catch (err) { toast(view, err.message, 'warn'); }
+    e.target.value = '';
+  };
   view.querySelector('#json')?.addEventListener('click', () =>
     io.saveFile(`vokabeln-${date}.json`, JSON.stringify(pack, null, 2), 'application/json'));
   view.querySelector('#csv')?.addEventListener('click', () =>
@@ -403,6 +460,9 @@ export async function parentsRoute(ctx, rest) {
     if (rest === '/import') return importView(ctx);
     if (rest === '/export') return exportView(ctx);
     if (rest === '/pin') return changePin(ctx);
+    if ((m = rest.match(/^\/child\/([^/]+)\/tasks$/))) return tasksView(ctx, decodeURIComponent(m[1]));
+    if ((m = rest.match(/^\/child\/([^/]+)\/edit$/))) return editChildView(ctx, decodeURIComponent(m[1]));
+    if ((m = rest.match(/^\/child\/([^/]+)$/))) return childView(ctx, decodeURIComponent(m[1]));
     return dashboard(ctx);
   };
   if (isUnlocked()) return run();

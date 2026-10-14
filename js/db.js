@@ -3,25 +3,39 @@
 // Stores
 //   topics   { id, lang, grade, title, icon, builtin }
 //   vocab    { id, topicId, term, translation, note, builtin }
-//   progress { vocabId, box, right, wrong, seen }
+//   profiles { id, name, avatar, grade, theme, dailyGoal, tasks: [topicId], created }
+//   progress { key: "<profileId>|<vocabId>", profileId, vocabId, box, due, right, wrong, seen }
+//   sessions { id, profileId, topicId, mode, start, end, answers, right, wrong, words: [vocabId] }
 //   meta     { key, value }
 
 const DB_NAME = 'vokabeltrainer';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export const STORES = ['topics', 'vocab', 'profiles', 'progress', 'sessions', 'meta'];
 
 let dbPromise;
 
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result;
-      const topics = db.createObjectStore('topics', { keyPath: 'id' });
-      topics.createIndex('langGrade', ['lang', 'grade']);
-      const vocab = db.createObjectStore('vocab', { keyPath: 'id' });
-      vocab.createIndex('topicId', 'topicId');
-      db.createObjectStore('progress', { keyPath: 'vocabId' });
-      db.createObjectStore('meta', { keyPath: 'key' });
+      if (e.oldVersion < 1) {
+        const topics = db.createObjectStore('topics', { keyPath: 'id' });
+        topics.createIndex('langGrade', ['lang', 'grade']);
+        const vocab = db.createObjectStore('vocab', { keyPath: 'id' });
+        vocab.createIndex('topicId', 'topicId');
+        db.createObjectStore('meta', { keyPath: 'key' });
+      }
+      if (e.oldVersion < 2) {
+        // v1 progress had no profiles; nobody used it yet, so start fresh.
+        if (db.objectStoreNames.contains('progress')) db.deleteObjectStore('progress');
+        const progress = db.createObjectStore('progress', { keyPath: 'key' });
+        progress.createIndex('profileId', 'profileId');
+        db.createObjectStore('profiles', { keyPath: 'id' });
+        const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
+        sessions.createIndex('profileId', 'profileId');
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -53,6 +67,10 @@ export async function put(name, value) {
 
 export async function del(name, key) {
   return done((await store(name, 'readwrite')).delete(key));
+}
+
+export async function clear(name) {
+  return done((await store(name, 'readwrite')).clear());
 }
 
 export async function putMany(name, values) {

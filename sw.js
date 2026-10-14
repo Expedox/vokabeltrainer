@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const FILES = [
   './',
   'index.html',
@@ -12,6 +12,11 @@ const FILES = [
   'js/util.js',
   'js/parents.js',
   'js/io.js',
+  'js/srs.js',
+  'js/profiles.js',
+  'js/speech.js',
+  'js/check.js',
+  'js/child.js',
   'data/en.json',
   'icons/icon.svg',
   'icons/icon-180.png',

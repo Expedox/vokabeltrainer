@@ -152,3 +152,30 @@ export async function saveFile(name, text, type) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ---- Full backup (children, progress, own words, settings) ------------
+
+export async function makeBackup() {
+  const custom = (rows) => rows.filter((r) => !r.builtin);
+  return {
+    format: 'vokabeltrainer-backup', version: 1, created: new Date().toISOString(),
+    topics: custom(await db.all('topics')),
+    vocab: custom(await db.all('vocab')),
+    profiles: await db.all('profiles'),
+    progress: await db.all('progress'),
+    sessions: await db.all('sessions'),
+    meta: (await db.all('meta')).filter((m) => !m.key.startsWith('seed:')),
+  };
+}
+
+export async function restoreBackup(text) {
+  const data = JSON.parse(text.replace(/^﻿/, ''));
+  if (data.format !== 'vokabeltrainer-backup') throw new Error('Das ist keine Sicherungsdatei des Vokabeltrainers.');
+  for (const name of ['profiles', 'progress', 'sessions']) await db.clear(name);
+  for (const t of (await db.all('topics')).filter((r) => !r.builtin)) await db.del('topics', t.id);
+  for (const v of (await db.all('vocab')).filter((r) => !r.builtin)) await db.del('vocab', v.id);
+  for (const name of ['topics', 'vocab', 'profiles', 'progress', 'sessions', 'meta']) {
+    if (Array.isArray(data[name])) await db.putMany(name, data[name]);
+  }
+  return { profiles: data.profiles?.length ?? 0, words: data.vocab?.length ?? 0 };
+}
