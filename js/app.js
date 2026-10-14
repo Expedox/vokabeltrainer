@@ -143,6 +143,8 @@ async function homeView() {
       <div class="stat"><span class="stat-big">🔥 ${streak}</span><span>${streak === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
       <div class="stat"><span class="stat-big">📚 ${learned}</span><span>Wörter gelernt</span></div>
     </div>
+    <h3 class="section">So übe ich</h3>
+    ${modePicker(p)}
     ${(await Promise.all(exams.upcoming(p).map(async (e) => {
       const st = await exams.status(p, e, state.lang);
       const d = srs.daysUntil(e.date);
@@ -171,6 +173,7 @@ async function homeView() {
     ${mine.length ? await topicTiles(mine) : '<p class="empty">Für diese Klasse gibt es noch keine Themen.</p>'}
     <a class="btn more-link" href="#/grades">Andere Klasse ansehen</a>
   `;
+  wireModePicker();
 }
 
 async function gradesView() {
