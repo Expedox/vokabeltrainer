@@ -1,6 +1,6 @@
 // Helpers for the spelling bee and pronunciation modes.
 
-import { normalize, bare, distance, alternatives } from './check.js';
+import { alternatives } from './check.js';
 import { esc } from './util.js';
 
 const IRREGULAR = {
@@ -71,17 +71,4 @@ export function sentenceHtml(term, sentence, mode = 'gap') {
   const word = sentence.slice(hit.start, hit.end);
   const mid = mode === 'gap' ? `<span class="gap">${'_'.repeat(Math.min(Math.max(word.length, 4), 12))}</span>` : `<mark>${esc(word)}</mark>`;
   return esc(sentence.slice(0, hit.start)) + mid + esc(sentence.slice(hit.end));
-}
-
-// Did the speech recogniser hear the word? Lenient: kids, accents, homophones.
-export function heardRight(heard, term) {
-  return heard.some((h) => {
-    const said = normalize(h);
-    return alternatives(term).some((alt) => {
-      const want = bare(alt);
-      if (!want) return false;
-      if (findWord(alt, said) || bare(said) === want || said.split(' ').includes(want) || ` ${said} `.includes(` ${want} `)) return true;
-      return want.length >= 4 && distance(bare(said), want) <= 1;
-    });
-  });
 }

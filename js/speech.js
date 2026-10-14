@@ -40,29 +40,20 @@ export function speakAll(texts, lang = 'en-GB') {
   });
 }
 
-// ---- Speech recognition (pronunciation practice) ----
-// Safari and Chrome ship it prefixed; it usually needs the internet.
-
-const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-export const canListen = () => Boolean(Recognition) && navigator.onLine !== false;
-
-// Resolves with the heard alternatives (lower case), or rejects with an error code
-// ('not-allowed', 'network', 'no-speech', …).
-export function listen(lang = 'en-GB') {
-  return new Promise((resolve, reject) => {
-    if (canSpeak()) speechSynthesis.cancel();
-    const r = new Recognition();
-    r.lang = lang;
-    r.interimResults = false;
-    r.maxAlternatives = 5;
-    let done = false;
-    r.onresult = (e) => {
-      done = true;
-      resolve([...e.results[0]].map((a) => a.transcript.toLowerCase().trim()));
-    };
-    r.onerror = (e) => { done = true; reject(e.error || 'error'); };
-    r.onend = () => { if (!done) reject('no-speech'); };
-    try { r.start(); } catch { reject('error'); }
-    setTimeout(() => { if (!done) r.stop(); }, 6000);
+// Resolves when the word has been read out (or after a few seconds at most).
+export function speakWait(text, lang = 'en-GB') {
+  return new Promise((resolve) => {
+    if (!canSpeak() || !text) { resolve(); return; }
+    speak(text, lang);
+    const t = setTimeout(resolve, 4000);
+    // Give the voice a moment to start before checking whether it has finished.
+    setTimeout(() => {
+      const poll = setInterval(() => {
+        if (!speechSynthesis.speaking) { clearInterval(poll); clearTimeout(t); setTimeout(resolve, 250); }
+      }, 150);
+    }, 400);
   });
 }
+
+// Recording yourself (pronunciation practice); works offline.
+export const canRecord = () => Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);

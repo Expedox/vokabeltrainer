@@ -3,16 +3,16 @@
 //   choice – pick the right answer out of four
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
-//   speak  – say the English word into the microphone (self-rating without one)
+//   speak  – listen, record yourself, compare and rate yourself
 // Missed words come back a few cards later in the same round. The round ends
 // when every word has been answered right once.
 
 import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, plain } from './util.js';
-import { speak, speakAll, canSpeak, canListen, listen } from './speech.js';
+import { speak, speakAll, speakWait, canSpeak, canRecord } from './speech.js';
 import { check } from './check.js';
-import { sentenceHtml, heardRight, gapWord } from './bee.js';
+import { sentenceHtml, gapWord } from './bee.js';
 import { normalize } from './check.js';
 
 export const MODES = [
@@ -20,7 +20,7 @@ export const MODES = [
   { id: 'choice', name: 'Auswählen', icon: '🔘', hint: 'Richtige Antwort antippen' },
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
-  { id: 'speak', name: 'Aussprechen', icon: '🎤', hint: 'Wort laut sagen', english: true },
+  { id: 'speak', name: 'Aussprechen', icon: '🎤', hint: 'Anhören, selbst aufnehmen, vergleichen', english: true },
 ];
 
 const PRAISE = {
@@ -298,11 +298,11 @@ export async function runSession(view, opts) {
   }
 
   // ---- speak (pronunciation) ----
-  // With a microphone: the device's speech recognition listens. Without one,
-  // offline or when access is denied: listen, repeat aloud, rate yourself.
-  let micOff = !canListen();
+  // Listen, record yourself, compare both. Speech recognition is not used: it
+  // corrects towards known words ("suggess" → "success") and can't judge sounds,
+  // so the child compares by ear and rates itself.
   function renderSpeak(w) {
-    let tries = 0;
+    let mine = null;
     frame(`
       <div class="prompt-card speak-card">
         ${pic(w)}
@@ -321,51 +321,76 @@ export async function runSession(view, opts) {
     if (opts.autoSpeak) speak(w.term);
     const area = view.querySelector('#mic-area');
 
-    const selfRate = (msg) => {
-      area.innerHTML = `
-        ${msg ? `<p class="hint center">${esc(msg)}</p>` : '<p class="hint center">Hör gut zu und sag das Wort laut nach.</p>'}
-        <div class="answers">
-          <button class="btn answer wrong" id="wrong">↺ Nochmal üben</button>
-          <button class="btn answer right" id="right">✓ Gut gesagt</button>
-        </div>`;
-      area.querySelector('#wrong').onclick = () => !answered && feedback(false, w, '', false, true);
-      area.querySelector('#right').onclick = () => !answered && feedback(true, w);
-      keys = { left: () => !answered && feedback(false, w, '', false, true), right: () => !answered && feedback(true, w) };
+    const rateButtons = `
+      <div class="answers">
+        <button class="btn answer wrong" id="wrong">↺ Nochmal üben</button>
+        <button class="btn answer right" id="right">✓ Klingt gleich</button>
+      </div>`;
+    const wireRate = () => {
+      const no = () => !answered && feedback(false, w, '', false, true);
+      const yes = () => !answered && feedback(true, w);
+      area.querySelector('#wrong').onclick = no;
+      area.querySelector('#right').onclick = yes;
+      keys = { left: no, right: yes };
+    };
+    const compare = async () => {
+      if (canSpeak()) await speakWait(w.term);
+      if (mine && view.contains(area)) { const a = new Audio(mine); await a.play().catch(() => {}); }
     };
 
-    const micUi = (msg) => {
+    const draw = (state) => {
       area.innerHTML = `
-        <button class="mic" id="mic" aria-label="Sprechen">🎤</button>
-        <p class="hint center" id="mic-msg">${esc(msg || 'Tippe auf das Mikrofon und sag das Wort.')}</p>
-        ${tries >= 2 ? '<div class="row center"><button class="btn" id="skip">Weiter</button><button class="btn" id="self">✓ Ich hab\'s richtig gesagt</button></div>' : ''}`;
-      area.querySelector('#skip')?.addEventListener('click', () => !answered && feedback(false, w, '', false, true));
-      area.querySelector('#self')?.addEventListener('click', () => !answered && feedback(true, w));
-      const mic = area.querySelector('#mic');
-      mic.onclick = async () => {
-        if (answered || mic.classList.contains('on')) return;
-        mic.classList.add('on');
-        area.querySelector('#mic-msg').textContent = 'Ich höre zu …';
-        try {
-          const heard = await listen();
-          if (answered || !view.contains(mic)) return;
-          if (heardRight(heard, w.term)) { feedback(true, w); return; }
-          tries++;
-          micUi(`Ich habe „${heard[0]}“ verstanden. Hör nochmal zu und probier es wieder.`);
-          if (canSpeak()) speak(w.term);
-        } catch (err) {
-          if (answered || !view.contains(mic)) return;
-          if (err === 'no-speech' || err === 'aborted') { tries++; micUi('Ich habe nichts gehört. Nochmal?'); return; }
-          // No permission, no internet or no service: rate yourself for the rest of the round.
-          micOff = true;
-          selfRate(err === 'not-allowed' || err === 'service-not-allowed'
-            ? 'Das Mikrofon ist nicht erlaubt. Sag das Wort laut und bewerte dich selbst.'
-            : 'Die Spracherkennung geht gerade nicht. Sag das Wort laut und bewerte dich selbst.');
-        }
+        <button class="mic${state === 'rec' ? ' on' : ''}" id="mic" aria-label="${state === 'rec' ? 'Aufnahme stoppen' : 'Aufnehmen'}">${state === 'rec' ? '⏹' : '🎤'}</button>
+        <p class="hint center">${state === 'rec' ? 'Sprich jetzt … dann tippe auf Stopp.'
+          : state === 'done' ? 'Hör dir beides an: klingt es gleich?'
+          : 'Nimm dich auf und vergleiche mit dem Original.'}</p>
+        ${state === 'done' ? `<div class="row center">
+          <button class="btn" id="compare">🔁 Vergleichen</button>
+          <button class="btn" id="play-mine">▶️ Ich</button>
+        </div>` : ''}
+        ${state === 'rec' ? '' : rateButtons}
+        <p class="hint center small">Die App hört dir nicht zu und bewertet nicht selbst. Du vergleichst mit deinen Ohren.</p>`;
+      if (state !== 'rec') wireRate();
+      area.querySelector('#compare')?.addEventListener('click', compare);
+      area.querySelector('#play-mine')?.addEventListener('click', () => new Audio(mine).play().catch(() => {}));
+      area.querySelector('#mic').onclick = state === 'rec' ? () => rec?.stop() : record;
+    };
+
+    let rec = null;
+    async function record() {
+      if (answered) return;
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        area.innerHTML = `<p class="hint center">Ohne Mikrofon: Hör gut zu, sag das Wort laut nach und bewerte dich selbst.</p>${rateButtons}`;
+        wireRate();
+        return;
+      }
+      if (canSpeak()) speechSynthesis.cancel();
+      const chunks = [];
+      rec = new MediaRecorder(stream);
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearTimeout(limit);
+        rec = null;
+        if (!view.contains(area) || answered) return;
+        if (mine) URL.revokeObjectURL(mine);
+        mine = URL.createObjectURL(new Blob(chunks, { type: chunks[0]?.type || 'audio/mp4' }));
+        draw('done');
+        compare();
       };
-      keys = {};
-    };
+      rec.start();
+      const limit = setTimeout(() => rec?.state === 'recording' && rec.stop(), 5000);
+      draw('rec');
+    }
 
-    if (micOff) selfRate(); else micUi();
+    if (canRecord()) draw('idle');
+    else {
+      area.innerHTML = `<p class="hint center">Hör gut zu, sag das Wort laut nach und bewerte dich selbst.</p>${rateButtons}`;
+      wireRate();
+    }
   }
 
   // Feedback for choice/write: right answers move on by themselves, wrong ones

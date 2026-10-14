@@ -455,3 +455,4 @@ label.choice.card { margin: 0; }
 .mic.on { animation: mic-pulse 1s ease-in-out infinite; }
 @keyframes mic-pulse { 50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .mic.on { animation: none; outline: 4px solid var(--accent); outline-offset: 4px; } }
+.hint.small { font-size: .75em; margin-top: 14px; }
