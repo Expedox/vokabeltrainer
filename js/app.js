@@ -1,30 +1,8 @@
 import * as db from './db.js';
 import { LANGUAGES, seed } from './seed.js';
-import { esc } from './util.js';
+import { esc, STAGES, THEMES, stageOf, classLabel } from './util.js';
+import { parentsRoute, lock } from './parents.js';
 import { runSession, progressFor, needsRepeat } from './learn.js';
-
-export const STAGES = [
-  { id: 'vs', name: 'Volksschule', short: 'VS', grades: [1, 2, 3, 4], theme: 'kids' },
-  { id: 'us', name: 'Unterstufe', short: 'MS/AHS', grades: [5, 6, 7, 8], theme: 'teen' },
-  { id: 'os', name: 'Oberstufe', short: 'AHS', grades: [9, 10, 11, 12], theme: 'adult' },
-];
-
-export const THEMES = [
-  { id: 'auto', name: 'Automatisch', hint: 'passt sich der Schulstufe an' },
-  { id: 'kids', name: 'Kindlich', hint: 'bunt und verspielt' },
-  { id: 'teen', name: 'Jugendlich', hint: 'frisch, ohne Kinderkram' },
-  { id: 'adult', name: 'Erwachsen', hint: 'ruhig und schlicht' },
-];
-
-export const stageOf = (grade) => STAGES.find((s) => s.grades.includes(grade));
-
-// Grade 1–4 count as Volksschule classes 1–4, 5–8 as class 1–4 Unterstufe,
-// 9–12 as class 5–8 AHS. Kids know their class, not the Schulstufe.
-export function classLabel(grade) {
-  if (grade <= 4) return `${grade}. Klasse VS`;
-  if (grade <= 8) return `${grade - 4}. Klasse`;
-  return `${grade - 4}. Klasse AHS`;
-}
 
 const state = { lang: 'en', grade: null, theme: 'auto' };
 const view = document.getElementById('view');
@@ -158,6 +136,7 @@ async function settingsView() {
       </div>
       <p class="hint">Weitere Sprachen folgen.</p>
     </section>
+    <a class="btn parents-link" href="#/parents">🔒 Elternbereich</a>
   `;
   view.querySelectorAll('input[name=theme]').forEach((el) => el.addEventListener('change', async () => {
     state.theme = el.value;
@@ -178,10 +157,13 @@ const routes = [
   [/^#\/topic\/(.+)$/, (m) => topicView(decodeURIComponent(m[1]))],
   [/^#\/learn\/(.+)\/(all|repeat)$/, (m) => learnView(decodeURIComponent(m[1]), m[2])],
   [/^#\/settings$/, () => settingsView()],
+  [/^#\/parents(.*)$/, (m) => parentsRoute({ view, setHeader, lang: state.lang, grade: state.grade }, m[1])],
 ];
 
 async function route() {
   const hash = location.hash || '#/';
+  // Leaving the parents area locks it again, so kids can't just tap back in.
+  if (!hash.startsWith('#/parents')) lock();
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) { await fn(m); view.focus({ preventScroll: true }); window.scrollTo(0, 0); return; }
