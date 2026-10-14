@@ -19,6 +19,20 @@ ICONS = {
     'medien': '📱', 'technik': '💻', 'gefühl': '😊', 'gesellschaft': '🤝', 'wissenschaft': '🔬',
     'global': '🌐', 'politik': '🏛️', 'wirtschaft': '📈', 'kultur': '🎭', 'migration': '🧳',
     'zukunft': '🚀', 'diskussion': '💬', 'argument': '💬', 'freund': '🧑‍🤝‍🧑',
+    'mein tag': '🌞', 'alltag': '🗓️', 'routine': '🗓️', 'wohnen': '🏡', 'umgebung': '🏡', 'fest': '🎉',
+    'feier': '🎉', 'jahresablauf': '🎄', 'wochenende': '🏖️', 'ferien': '🏖️', 'tagesaktiv': '🌞',
+    'zeit': '⏰', 'termin': '📆', 'orte': '📍', 'verben': '🏃', 'menschen': '🧑', 'eigenschaft': '🧑',
+    'verkehr': '🚌', 'jugend': '🧑‍🎤', 'kommunikation': '💬', 'erlebnis': '🌟', 'soziales': '🤝',
+    'konsum': '🛍️', 'geld': '💶', 'finanz': '💶', 'beziehung': '❤️', 'film': '🎬', 'musik': '🎵',
+    'tradition': '🎎', 'geschichte': '📜', 'religion': '🕊️', 'werte': '🕊️', 'krieg': '🕊️', 'frieden': '🕊️',
+    'hilfe': '🤲', 'engagement': '🤲', 'katastroph': '🌪️', 'sprache': '🗣️', 'mobilität': '🚲',
+    'lebenswelt': '🧑‍🎤', 'recht': '⚖️', 'gerechtigkeit': '⚖️', 'klima': '🌡️', 'natur': '🌳',
+    'literatur': '📖', 'kunst': '🎨', 'gefühl': '😊', 'körper': '🖐️', 'tiere': '🐶', 'schule': '🏫',
+    'freizeit': '🎮', 'reise': '✈️', 'urlaub': '✈️', 'essen': '🍎', 'kleidung': '👕', 'wetter': '☀️',
+    'stadt': '🏙️', 'land': '🌄', 'demokratie': '🏛️', 'staat': '🏛️', 'medizin': '🩺', 'ernährung': '🥗',
+    'digital': '💻', 'internet': '🌐', 'computer': '💻', 'energie': '⚡', 'ressourcen': '♻️', 'nachhaltig': '♻️',
+    'identität': '🪞', 'liebe': '❤️', 'ethik': '🤔', 'philosoph': '🤔', 'psycholog': '🧠', 'gesundh': '🩺',
+    'farbe': '🎨', 'zahl': '🔢', 'spielzeug': '🧸', 'spiel': '🎲', 'obst': '🍓', 'gemüse': '🥕',
 }
 
 def icon_for(topic):
@@ -31,6 +45,7 @@ def main():
     src = sys.argv[1]
     lang = sys.argv[2] if len(sys.argv) > 2 else 'en'
     topics = []
+    by_key = {}
     for path in sorted(glob.glob(os.path.join(src, 'stufe-*.json'))):
         data = json.load(open(path, encoding='utf-8'))
         grade = int(data['grade'])
@@ -44,7 +59,13 @@ def main():
                 seen.add(term.lower())
                 note = (w.get('note') or '').strip()
                 words.append([term, trans, note] if note else [term, trans])
-            topics.append({'grade': grade, 'title': t['title_de'], 'icon': icon_for(t), 'words': words})
+            key = (grade, t['title_de'].strip().lower())
+            if key in by_key:  # same title twice in one grade: merge
+                have = {w[0].lower() for w in by_key[key]['words']}
+                by_key[key]['words'] += [w for w in words if w[0].lower() not in have]
+                continue
+            by_key[key] = {'grade': grade, 'title': t['title_de'].strip(), 'icon': icon_for(t), 'words': words}
+            topics.append(by_key[key])
     out = {'version': datetime.datetime.now().strftime('%Y-%m-%d.%H%M'), 'lang': lang, 'topics': topics}
     dest = os.path.join(os.path.dirname(__file__), '..', 'data', f'{lang}.json')
     with open(dest, 'w', encoding='utf-8') as f:

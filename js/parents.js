@@ -253,7 +253,7 @@ async function addView(ctx, topicId) {
       <label class="field"><span>Deutsch</span><input name="translation" required maxlength="120"></label>
       <label class="field"><span>Notiz oder Beispielsatz (optional)</span><input name="note" maxlength="240"></label>
       <p class="toast" hidden></p>
-      <button class="btn primary">Speichern und nächste</button>
+      <button class="btn primary">Speichern und weiter</button>
     </form>
     <ul class="wordlist recent"></ul>
   `;
