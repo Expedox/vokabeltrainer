@@ -214,7 +214,8 @@ function modePicker(p) {
           <span><b>${m.icon}</b>${m.name}</span>
         </label>`).join('')}
     </div>
-    <div class="segmented" role="radiogroup" aria-label="Richtung">
+    <p class="hint mode-hint" id="mode-hint">${esc(MODES.find((m) => m.id === p.mode)?.hint ?? '')}</p>
+    <div class="segmented" id="dir-picker"${MODES.find((m) => m.id === p.mode)?.english ? ' hidden' : ''} role="radiogroup" aria-label="Richtung">
       <label><input type="radio" name="dir" value="en-de"${p.direction !== 'de-en' ? ' checked' : ''}><span>Englisch → Deutsch</span></label>
       <label><input type="radio" name="dir" value="de-en"${p.direction === 'de-en' ? ' checked' : ''}><span>Deutsch → Englisch</span></label>
     </div>`;
@@ -223,6 +224,10 @@ function modePicker(p) {
 function wireModePicker() {
   view.querySelectorAll('input[name=mode]').forEach((el) => el.addEventListener('change', () => {
     state.profile.mode = el.value; profiles.save(state.profile);
+    const m = MODES.find((x) => x.id === el.value);
+    view.querySelector('#mode-hint').textContent = m.hint;
+    // Spelling and speaking are always about the English word.
+    view.querySelector('#dir-picker').hidden = Boolean(m.english);
   }));
   view.querySelectorAll('input[name=dir]').forEach((el) => el.addEventListener('change', () => {
     state.profile.direction = el.value;
@@ -267,7 +272,7 @@ async function topicView(topicId) {
       const mark = srs.needsRepeat(pr) ? '<span class="dot wrong" title="wiederholen"></span>'
         : srs.isLearned(pr) ? '<span class="dot right" title="gelernt"></span>' : '<span class="dot"></span>';
       const [a, b] = deEn ? [plain(w.translation, 'de'), plain(w.term, 'en')] : [plain(w.term, 'en'), plain(w.translation, 'de')];
-      return `<li>${mark}<span class="term">${esc(a)}</span><span class="trans">${esc(b)}</span></li>`;
+      return `<li>${mark}<span class="term">${w.icon ? `${esc(w.icon)} ` : ''}${esc(a)}</span><span class="trans">${esc(b)}</span></li>`;
     }).join('');
   };
   drawList();

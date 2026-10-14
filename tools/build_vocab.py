@@ -6,7 +6,8 @@ Source format (one file per grade):
   {"language": "en", "grade": 7, "topics": [
     {"id": "umwelt", "title_de": "Umwelt", "icon": "🌍",            # icon optional
      "words": [{"en": "pollution", "de": "die Verschmutzung",
-                "note": "Air pollution is a big problem."}]}]}     # note optional
+                "note": "Air pollution is a big problem.",          # note optional
+                "icon": "🏭"}]}]}                                    # icon optional
 """
 import datetime, glob, json, os, sys
 
@@ -58,7 +59,8 @@ def main():
                     continue
                 seen.add(term.lower())
                 note = (w.get('note') or '').strip()
-                words.append([term, trans, note] if note else [term, trans])
+                icon = (w.get('icon') or '').strip()
+                words.append([term, trans, note, icon] if icon else [term, trans, note] if note else [term, trans])
             key = (grade, t['title_de'].strip().lower())
             if key in by_key:  # same title twice in one grade: merge
                 have = {w[0].lower() for w in by_key[key]['words']}

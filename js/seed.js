@@ -24,8 +24,8 @@ export async function seed(lang) {
   for (const t of bundle.topics) {
     const topicId = `${lang}-${t.grade}-${slug(t.title)}`;
     topics.push({ id: topicId, lang, grade: t.grade, title: t.title, icon: t.icon, builtin: true });
-    for (const [term, translation, note = ''] of t.words) {
-      vocab.push({ id: `${topicId}:${slug(term)}`, topicId, term, translation, note, builtin: true });
+    for (const [term, translation, note = '', icon = ''] of t.words) {
+      vocab.push({ id: `${topicId}:${slug(term)}`, topicId, term, translation, note, icon, builtin: true });
     }
   }
 

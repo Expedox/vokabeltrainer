@@ -1,20 +1,25 @@
-// A learning round in one of three modes:
+// A learning round in one of five modes:
 //   cards  – flip the card, then "Kann ich" / "Muss ich wiederholen"
 //   choice – pick the right answer out of four
 //   write  – type the answer (tolerant check, see check.js)
+//   spell  – spelling bee: hear word and example sentence, type the English word exactly
+//   speak  – say the English word into the microphone (self-rating without one)
 // Missed words come back a few cards later in the same round. The round ends
 // when every word has been answered right once.
 
 import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, plain } from './util.js';
-import { speak, canSpeak } from './speech.js';
+import { speak, speakAll, canSpeak, canListen, listen } from './speech.js';
 import { check } from './check.js';
+import { sentenceHtml, heardRight } from './bee.js';
 
 export const MODES = [
   { id: 'cards', name: 'Karteikarten', icon: '🃏', hint: 'Umdrehen und selbst bewerten' },
   { id: 'choice', name: 'Auswählen', icon: '🔘', hint: 'Richtige Antwort antippen' },
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
+  { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
+  { id: 'speak', name: 'Aussprechen', icon: '🎤', hint: 'Wort laut sagen', english: true },
 ];
 
 const PRAISE = {
@@ -87,6 +92,7 @@ export async function runSession(view, opts) {
   const front = (w) => (direction === 'de-en' ? plain(w.translation, 'de') : plain(w.term, 'en'));
   const back = (w) => (direction === 'de-en' ? plain(w.term, 'en') : plain(w.translation, 'de'));
   const englishOn = (side) => (direction === 'de-en') === (side === 'back');
+  const pic = (w) => (w.icon ? `<span class="pic" aria-hidden="true">${esc(w.icon)}</span>` : '');
   const speakBtn = (w) => (canSpeak() ? `<button class="speak" data-say="${esc(w.term)}" aria-label="Vorlesen">🔊</button>` : '');
 
   function wireSpeak(root) {
@@ -112,6 +118,8 @@ export async function runSession(view, opts) {
     const w = queue[0];
     if (mode === 'choice') renderChoice(w);
     else if (mode === 'write') renderWrite(w);
+    else if (mode === 'spell') renderSpell(w);
+    else if (mode === 'speak') renderSpeak(w);
     else renderCard(w);
   }
 
@@ -121,6 +129,7 @@ export async function runSession(view, opts) {
       <div class="flashcard" id="card" role="button" tabindex="0" aria-label="Karte umdrehen">
         <div class="face front">
           ${englishOn('front') ? speakBtn(w) : ''}
+          ${pic(w)}
           <span class="word">${esc(front(w))}</span>
           <span class="tap">Tippen zum Umdrehen</span>
         </div>
@@ -163,6 +172,7 @@ export async function runSession(view, opts) {
     frame(`
       <div class="prompt-card">
         ${englishOn('front') ? speakBtn(w) : ''}
+        ${pic(w)}
         <span class="word">${esc(front(w))}</span>
       </div>
       <div class="options">
@@ -190,6 +200,7 @@ export async function runSession(view, opts) {
     frame(`
       <div class="prompt-card">
         ${englishOn('front') ? speakBtn(w) : ''}
+        ${pic(w)}
         <span class="word">${esc(front(w))}</span>
       </div>
       <form class="write-form" autocomplete="off">
@@ -234,22 +245,143 @@ export async function runSession(view, opts) {
     keys = {};
   }
 
+  // ---- spell (spelling bee) ----
+  // The word is read out, then the example sentence, then the word again.
+  // The sentence is shown with a gap where the word is; the German meaning helps.
+  function renderSpell(w) {
+    const say = () => speakAll([w.term, w.note, w.term]);
+    frame(`
+      <div class="prompt-card bee">
+        ${pic(w)}
+        ${canSpeak() ? `<div class="row center">
+          <button class="btn" id="say-word">🔊 Wort</button>
+          ${w.note ? '<button class="btn" id="say-sentence">💬 Satz</button>' : ''}
+        </div>` : ''}
+        ${w.note ? `<p class="sentence">${sentenceHtml(w.term, w.note)}</p>` : ''}
+        <span class="meaning">${esc(plain(w.translation, 'de'))}</span>
+      </div>
+      <form class="write-form" autocomplete="off">
+        <input class="write-input" name="answer" placeholder="Wie schreibt man das?" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Englisches Wort">
+        <div class="row">
+          <button type="button" class="btn" id="giveup">Weiß ich nicht</button>
+          <button class="btn primary">Prüfen</button>
+        </div>
+      </form>
+      <div class="feedback" hidden></div>`);
+    view.querySelector('#say-word')?.addEventListener('click', () => speak(w.term));
+    view.querySelector('#say-sentence')?.addEventListener('click', () => speakAll([w.note]));
+    say();
+    const form = view.querySelector('form');
+    const input = form.answer;
+    if (/^to\s/i.test(w.term)) input.value = 'to ';
+    setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }, 50);
+    const settle = (ok, hint) => {
+      input.disabled = true;
+      input.classList.add(ok ? 'is-right' : 'is-wrong');
+      form.querySelector('.row').hidden = true;
+      feedback(ok, w, hint, true);
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      if (answered) return;
+      if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
+      // Spelling counts letter by letter: "almost" is not enough here.
+      const res = check(input.value, w.term);
+      settle(res.exact, res.ok && !res.exact ? 'Ganz knapp, ein Buchstabe stimmt nicht.' : '');
+    };
+    view.querySelector('#giveup').onclick = () => { if (!answered) settle(false); };
+    keys = {};
+  }
+
+  // ---- speak (pronunciation) ----
+  // With a microphone: the device's speech recognition listens. Without one,
+  // offline or when access is denied: listen, repeat aloud, rate yourself.
+  let micOff = !canListen();
+  function renderSpeak(w) {
+    let tries = 0;
+    frame(`
+      <div class="prompt-card speak-card">
+        ${pic(w)}
+        <span class="word">${esc(plain(w.term, 'en'))}</span>
+        <span class="meaning">${esc(plain(w.translation, 'de'))}</span>
+        ${w.note ? `<p class="sentence">${sentenceHtml(w.term, w.note, 'mark')}</p>` : ''}
+      </div>
+      <div class="row center">
+        ${canSpeak() ? '<button class="btn" id="listen">🔊 Anhören</button>' : ''}
+        ${w.note && canSpeak() ? '<button class="btn" id="say-sentence">💬 Satz</button>' : ''}
+      </div>
+      <div id="mic-area"></div>
+      <div class="feedback" hidden></div>`);
+    view.querySelector('#listen')?.addEventListener('click', () => speak(w.term));
+    view.querySelector('#say-sentence')?.addEventListener('click', () => speakAll([w.note]));
+    if (opts.autoSpeak) speak(w.term);
+    const area = view.querySelector('#mic-area');
+
+    const selfRate = (msg) => {
+      area.innerHTML = `
+        ${msg ? `<p class="hint center">${esc(msg)}</p>` : '<p class="hint center">Hör gut zu und sag das Wort laut nach.</p>'}
+        <div class="answers">
+          <button class="btn answer wrong" id="wrong">↺ Nochmal üben</button>
+          <button class="btn answer right" id="right">✓ Gut gesagt</button>
+        </div>`;
+      area.querySelector('#wrong').onclick = () => !answered && feedback(false, w, '', false, true);
+      area.querySelector('#right').onclick = () => !answered && feedback(true, w);
+      keys = { left: () => !answered && feedback(false, w, '', false, true), right: () => !answered && feedback(true, w) };
+    };
+
+    const micUi = (msg) => {
+      area.innerHTML = `
+        <button class="mic" id="mic" aria-label="Sprechen">🎤</button>
+        <p class="hint center" id="mic-msg">${esc(msg || 'Tippe auf das Mikrofon und sag das Wort.')}</p>
+        ${tries >= 2 ? '<div class="row center"><button class="btn" id="skip">Weiter</button><button class="btn" id="self">✓ Ich hab\'s richtig gesagt</button></div>' : ''}`;
+      area.querySelector('#skip')?.addEventListener('click', () => !answered && feedback(false, w, '', false, true));
+      area.querySelector('#self')?.addEventListener('click', () => !answered && feedback(true, w));
+      const mic = area.querySelector('#mic');
+      mic.onclick = async () => {
+        if (answered || mic.classList.contains('on')) return;
+        mic.classList.add('on');
+        area.querySelector('#mic-msg').textContent = 'Ich höre zu …';
+        try {
+          const heard = await listen();
+          if (answered || !view.contains(mic)) return;
+          if (heardRight(heard, w.term)) { feedback(true, w); return; }
+          tries++;
+          micUi(`Ich habe „${heard[0]}“ verstanden. Hör nochmal zu und probier es wieder.`);
+          if (canSpeak()) speak(w.term);
+        } catch (err) {
+          if (answered || !view.contains(mic)) return;
+          if (err === 'no-speech' || err === 'aborted') { tries++; micUi('Ich habe nichts gehört. Nochmal?'); return; }
+          // No permission, no internet or no service: rate yourself for the rest of the round.
+          micOff = true;
+          selfRate(err === 'not-allowed' || err === 'service-not-allowed'
+            ? 'Das Mikrofon ist nicht erlaubt. Sag das Wort laut und bewerte dich selbst.'
+            : 'Die Spracherkennung geht gerade nicht. Sag das Wort laut und bewerte dich selbst.');
+        }
+      };
+      keys = {};
+    };
+
+    if (micOff) selfRate(); else micUi();
+  }
+
   // Feedback for choice/write: right answers move on by themselves, wrong ones
   // wait for a tap so the child can read the solution.
-  function feedback(ok, w, hint) {
+  // spelled: show the correct spelling letter by letter. quiet: no comfort text.
+  function feedback(ok, w, hint, spelled = false, quiet = false) {
     answered = true;
     const box = view.querySelector('.feedback');
     const t = theme();
     box.className = `feedback ${ok ? 'ok' : 'no'}`;
     box.innerHTML = ok
       ? `<strong>${pick(CHEER[t])}</strong>${hint ? `<span>${esc(hint)}</span>` : ''}`
-      : `<strong>${pick(COMFORT[t])}</strong>
-         <span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>
-         ${w.note ? `<span class="note">${esc(w.note)}</span>` : ''}
+      : `<strong>${quiet ? 'Kommt gleich nochmal.' : pick(COMFORT[t])}</strong>
+         ${spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${plain(w.term, 'en').split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
+           : (mode === 'speak' ? `<span class="solution"><b>${esc(plain(w.term, 'en'))}</b> ${speakBtn(w)}</span>` : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`)}
+         ${w.note && mode !== 'speak' ? `<span class="note">${esc(w.note)}</span>` : ''}
          <button class="btn primary" id="next">Weiter</button>`;
     box.hidden = false;
     wireSpeak(box);
-    if (opts.autoSpeak && (ok ? englishOn('back') : true)) speak(w.term);
+    if (opts.autoSpeak && (ok ? englishOn('back') && mode !== 'speak' && mode !== 'spell' : true)) speak(w.term);
     if (ok) {
       setTimeout(() => answer(true), hint ? 1700 : 900);
     } else {

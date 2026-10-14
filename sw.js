@@ -1,11 +1,12 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v16';
+const VERSION = 'v17';
 const FILES = [
   './',
   'index.html',
   'manifest.webmanifest',
   'css/style.css',
   'js/app.js',
+  'js/bee.js',
   'js/db.js',
   'js/seed.js',
   'js/learn.js',

@@ -10,13 +10,13 @@ export function normalize(s) {
     .replace(/\s+/g, ' ').trim();
 }
 
-const bare = (s) => normalize(s).replace(ARTICLES, '').trim();
+export const bare = (s) => normalize(s).replace(ARTICLES, '').trim();
 
 export function alternatives(expected) {
   return expected.split(/\s*[/;,]\s*/).map((a) => a.trim()).filter(Boolean);
 }
 
-function distance(a, b) {
+export function distance(a, b) {
   const m = a.length; const n = b.length;
   if (Math.abs(m - n) > 2) return 3;
   let prev = Array.from({ length: n + 1 }, (_, j) => j);
