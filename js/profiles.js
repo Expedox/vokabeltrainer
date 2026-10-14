@@ -13,6 +13,8 @@ export async function list() {
 export async function current() {
   const id = await db.getMeta('profileId');
   const p = id && await db.get('profiles', id);
+  // The pronunciation mode was removed; children who had it chosen get the default.
+  if (p?.mode === 'speak') { p.mode = p.grade <= 4 ? 'choice' : 'cards'; await save(p); }
   if (p) return p;
   const [first] = await list();
   if (first) await db.setMeta('profileId', first.id);

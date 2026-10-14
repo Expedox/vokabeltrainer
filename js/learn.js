@@ -1,16 +1,15 @@
-// A learning round in one of five modes:
+// A learning round in one of four modes:
 //   cards  – flip the card, then "Kann ich" / "Muss ich wiederholen"
 //   choice – pick the right answer out of four
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
-//   speak  – listen, record yourself, compare and rate yourself
 // Missed words come back a few cards later in the same round. The round ends
 // when every word has been answered right once.
 
 import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, plain } from './util.js';
-import { speak, speakAll, speakWait, canSpeak, canRecord } from './speech.js';
+import { speak, speakAll, canSpeak } from './speech.js';
 import { check } from './check.js';
 import { sentenceHtml, gapWord } from './bee.js';
 import { normalize } from './check.js';
@@ -20,7 +19,6 @@ export const MODES = [
   { id: 'choice', name: 'Auswählen', icon: '🔘', hint: 'Richtige Antwort antippen' },
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
-  { id: 'speak', name: 'Aussprechen', icon: '🎤', hint: 'Anhören, selbst aufnehmen, vergleichen', english: true },
 ];
 
 const PRAISE = {
@@ -120,7 +118,6 @@ export async function runSession(view, opts) {
     if (mode === 'choice') renderChoice(w);
     else if (mode === 'write') renderWrite(w);
     else if (mode === 'spell') renderSpell(w);
-    else if (mode === 'speak') renderSpeak(w);
     else renderCard(w);
   }
 
@@ -297,102 +294,6 @@ export async function runSession(view, opts) {
     keys = {};
   }
 
-  // ---- speak (pronunciation) ----
-  // Listen, record yourself, compare both. Speech recognition is not used: it
-  // corrects towards known words ("suggess" → "success") and can't judge sounds,
-  // so the child compares by ear and rates itself.
-  function renderSpeak(w) {
-    let mine = null;
-    frame(`
-      <div class="prompt-card speak-card">
-        ${pic(w)}
-        <span class="word">${esc(plain(w.term, 'en'))}</span>
-        <span class="meaning">${esc(plain(w.translation, 'de'))}</span>
-        ${w.note ? `<p class="sentence">${sentenceHtml(w.term, w.note, 'mark')}</p>` : ''}
-      </div>
-      <div class="row center">
-        ${canSpeak() ? '<button class="btn" id="listen">🔊 Anhören</button>' : ''}
-        ${w.note && canSpeak() ? '<button class="btn" id="say-sentence">💬 Satz</button>' : ''}
-      </div>
-      <div id="mic-area"></div>
-      <div class="feedback" hidden></div>`);
-    view.querySelector('#listen')?.addEventListener('click', () => speak(w.term));
-    view.querySelector('#say-sentence')?.addEventListener('click', () => speakAll([w.note]));
-    if (opts.autoSpeak) speak(w.term);
-    const area = view.querySelector('#mic-area');
-
-    const rateButtons = `
-      <div class="answers">
-        <button class="btn answer wrong" id="wrong">↺ Nochmal üben</button>
-        <button class="btn answer right" id="right">✓ Klingt gleich</button>
-      </div>`;
-    const wireRate = () => {
-      const no = () => !answered && feedback(false, w, '', false, true);
-      const yes = () => !answered && feedback(true, w);
-      area.querySelector('#wrong').onclick = no;
-      area.querySelector('#right').onclick = yes;
-      keys = { left: no, right: yes };
-    };
-    const compare = async () => {
-      if (canSpeak()) await speakWait(w.term);
-      if (mine && view.contains(area)) { const a = new Audio(mine); await a.play().catch(() => {}); }
-    };
-
-    const draw = (state) => {
-      area.innerHTML = `
-        <button class="mic${state === 'rec' ? ' on' : ''}" id="mic" aria-label="${state === 'rec' ? 'Aufnahme stoppen' : 'Aufnehmen'}">${state === 'rec' ? '⏹' : '🎤'}</button>
-        <p class="hint center">${state === 'rec' ? 'Sprich jetzt … dann tippe auf Stopp.'
-          : state === 'done' ? 'Hör dir beides an: klingt es gleich?'
-          : 'Nimm dich auf und vergleiche mit dem Original.'}</p>
-        ${state === 'done' ? `<div class="row center">
-          <button class="btn" id="compare">🔁 Vergleichen</button>
-          <button class="btn" id="play-mine">▶️ Ich</button>
-        </div>` : ''}
-        ${state === 'rec' ? '' : rateButtons}
-        <p class="hint center small">Die App hört dir nicht zu und bewertet nicht selbst. Du vergleichst mit deinen Ohren.</p>`;
-      if (state !== 'rec') wireRate();
-      area.querySelector('#compare')?.addEventListener('click', compare);
-      area.querySelector('#play-mine')?.addEventListener('click', () => new Audio(mine).play().catch(() => {}));
-      area.querySelector('#mic').onclick = state === 'rec' ? () => rec?.stop() : record;
-    };
-
-    let rec = null;
-    async function record() {
-      if (answered) return;
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch {
-        area.innerHTML = `<p class="hint center">Ohne Mikrofon: Hör gut zu, sag das Wort laut nach und bewerte dich selbst.</p>${rateButtons}`;
-        wireRate();
-        return;
-      }
-      if (canSpeak()) speechSynthesis.cancel();
-      const chunks = [];
-      rec = new MediaRecorder(stream);
-      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        clearTimeout(limit);
-        rec = null;
-        if (!view.contains(area) || answered) return;
-        if (mine) URL.revokeObjectURL(mine);
-        mine = URL.createObjectURL(new Blob(chunks, { type: chunks[0]?.type || 'audio/mp4' }));
-        draw('done');
-        compare();
-      };
-      rec.start();
-      const limit = setTimeout(() => rec?.state === 'recording' && rec.stop(), 5000);
-      draw('rec');
-    }
-
-    if (canRecord()) draw('idle');
-    else {
-      area.innerHTML = `<p class="hint center">Hör gut zu, sag das Wort laut nach und bewerte dich selbst.</p>${rateButtons}`;
-      wireRate();
-    }
-  }
-
   // Feedback for choice/write: right answers move on by themselves, wrong ones
   // wait for a tap so the child can read the solution.
   // spelled: the word to show letter by letter (spelling bee). quiet: no comfort text.
@@ -405,12 +306,12 @@ export async function runSession(view, opts) {
       ? `<strong>${pick(CHEER[t])}</strong>${hint ? `<span>${esc(hint)}</span>` : ''}`
       : `<strong>${quiet ? 'Kommt gleich nochmal.' : pick(COMFORT[t])}</strong>
          ${spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
-           : (mode === 'speak' ? `<span class="solution"><b>${esc(plain(w.term, 'en'))}</b> ${speakBtn(w)}</span>` : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`)}
-         ${w.note && mode !== 'speak' ? `<span class="note">${esc(w.note)}</span>` : ''}
+           : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`}
+         ${w.note ? `<span class="note">${esc(w.note)}</span>` : ''}
          <button class="btn primary" id="next">Weiter</button>`;
     box.hidden = false;
     wireSpeak(box);
-    if (opts.autoSpeak && (ok ? englishOn('back') && mode !== 'speak' && mode !== 'spell' : true)) speak(w.term);
+    if (opts.autoSpeak && (ok ? englishOn('back') && mode !== 'spell' : true)) speak(w.term);
     if (ok) {
       setTimeout(() => answer(true), hint ? 1700 : 900);
     } else {

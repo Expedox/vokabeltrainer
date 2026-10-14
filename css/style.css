@@ -437,11 +437,11 @@ details.card[open] summary { margin-bottom: 12px; }
 .lead .link-btn { font-size: .75em; margin-left: 6px; }
 label.choice.card { margin: 0; }
 
-/* ---- Word pictures, spelling bee, pronunciation ---- */
+/* ---- Word pictures, spelling bee ---- */
 .segmented[hidden] { display: none; }
 .mode-hint { margin: -2px 0 10px; text-align: center; }
 .pic { display: block; font-size: 3rem; line-height: 1; margin-bottom: 6px; }
-.prompt-card.bee, .prompt-card.speak-card { flex-direction: column; gap: 10px; padding: 20px 18px; }
+.prompt-card.bee { flex-direction: column; gap: 10px; padding: 20px 18px; }
 .row.center { justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .hint.center { text-align: center; }
 .sentence { margin: 0; font-size: 1.15em; line-height: 1.5; }
@@ -451,8 +451,3 @@ label.choice.card { margin: 0; }
 .spelling { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; margin: 6px 0; }
 .spelling > span { display: flex; gap: 3px; }
 .spelling b { min-width: 1.4em; padding: 3px 2px; text-align: center; border: 2px solid currentColor; border-radius: 7px; font-size: 1.05em; }
-.mic { display: block; margin: 16px auto 6px; width: 96px; height: 96px; border-radius: 50%; border: 0; font-size: 2.6rem; background: var(--accent); color: #fff; box-shadow: var(--shadow); cursor: pointer; }
-.mic.on { animation: mic-pulse 1s ease-in-out infinite; }
-@keyframes mic-pulse { 50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent); } }
-@media (prefers-reduced-motion: reduce) { .mic.on { animation: none; outline: 4px solid var(--accent); outline-offset: 4px; } }
-.hint.small { font-size: .75em; margin-top: 14px; }

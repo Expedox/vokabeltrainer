@@ -39,21 +39,3 @@ export function speakAll(texts, lang = 'en-GB') {
     speechSynthesis.speak(u);
   });
 }
-
-// Resolves when the word has been read out (or after a few seconds at most).
-export function speakWait(text, lang = 'en-GB') {
-  return new Promise((resolve) => {
-    if (!canSpeak() || !text) { resolve(); return; }
-    speak(text, lang);
-    const t = setTimeout(resolve, 4000);
-    // Give the voice a moment to start before checking whether it has finished.
-    setTimeout(() => {
-      const poll = setInterval(() => {
-        if (!speechSynthesis.speaking) { clearInterval(poll); clearTimeout(t); setTimeout(resolve, 250); }
-      }, 150);
-    }, 400);
-  });
-}
-
-// Recording yourself (pronunciation practice); works offline.
-export const canRecord = () => Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
