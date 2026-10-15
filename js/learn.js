@@ -4,6 +4,7 @@
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
 //   sentences – pick the right English sentence out of four, later build it from tiles
+//   build     – build every sentence from word tiles (with trap words) right away
 //   listen – the English word or sentence is only read out; pick its meaning
 // Sentence items (kind: 'sentence') are always shown as sentence exercises,
 // e.g. when they turn up in "Heute wiederholen".
@@ -25,6 +26,7 @@ export const MODES = [
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
   { id: 'sentences', name: 'Sätze', icon: '💬', hint: 'Richtigen Satz finden, dann selbst bauen', english: true },
+  { id: 'build', name: 'Satz bauen', icon: '🧩', hint: 'Satz aus Wortbausteinen bauen, Vorsicht vor Fallen', english: true },
   { id: 'listen', name: 'Hören', icon: '👂', hint: 'Nur hören, dann die Bedeutung wählen', english: true },
 ];
 
@@ -82,7 +84,7 @@ export async function runSession(view, opts) {
   // Spelling, sentences and listening always go from English to German.
   const direction = MODES.find((m) => m.id === mode)?.english ? 'en-de' : opts.direction;
   if (!words.length) {
-    view.innerHTML = `<p class="empty">${mode === 'sentences' ? 'Hier gibt es noch keine Sätze zum Üben.' : 'Keine Wörter für diese Runde.'}</p>`;
+    view.innerHTML = `<p class="empty">${mode === 'sentences' || mode === 'build' ? 'Hier gibt es noch keine Sätze zum Üben.' : 'Keine Wörter für diese Runde.'}</p>`;
     return;
   }
   const progress = await srs.progressMap(profile.id, words);
@@ -137,9 +139,10 @@ export async function runSession(view, opts) {
     const w = queue[0];
     if (mode === 'listen' && canSpeak()) renderListen(w);
     else if (isSentence(w)) {
-      // New or just missed: pick from four. Known once: build it from tiles.
-      if (progress.get(w.id).box >= 1 && tokens(w.term).length <= 14) renderBuild(w); else renderPick(w);
-    } else if (mode === 'choice' || mode === 'sentences') renderChoice(w);
+      // "Satz bauen": always tiles. "Sätze": pick from four first, tiles once known.
+      const buildable = tokens(w.term).length <= 14;
+      if (buildable && (mode === 'build' || progress.get(w.id).box >= 1)) renderBuild(w); else renderPick(w);
+    } else if (mode === 'choice' || mode === 'sentences' || mode === 'build') renderChoice(w);
     else if (mode === 'write') renderWrite(w);
     else if (mode === 'spell') renderSpell(w);
     else renderCard(w);
@@ -494,7 +497,9 @@ export async function runSession(view, opts) {
       if (opts.exam) known++;
       else queue.splice(Math.min(3, queue.length), 0, w);
     }
-    const asked = mode === 'listen' && canSpeak() ? 'listen' : isSentence(w) ? 'sentences' : mode === 'sentences' || mode === 'listen' ? 'choice' : mode;
+    const asked = mode === 'listen' && canSpeak() ? 'listen'
+      : isSentence(w) ? (mode === 'build' && tokens(w.term).length <= 14 ? 'build' : 'sentences')
+      : ['sentences', 'build', 'listen'].includes(mode) ? 'choice' : mode;
     await Promise.all([srs.logAnswer(session, w.id, ok, asked), db.put('progress', p)]);
     busy = false;
     if (queue.length) render(); else finish();

@@ -401,7 +401,7 @@ async function mixView(grade) {
     if (!ids.length) return;
     const n = Number(new FormData(form).get('size'));
     await db.setMeta(`mix:${p.id}:${grade}`, { topics: selected(), size: n, prev });
-    let words = (await Promise.all(ids.map((id) => db.vocabFor(id, p.mode === 'sentences' ? 'sentence' : 'word')))).flat();
+    let words = (await Promise.all(ids.map((id) => db.vocabFor(id, ['sentences', 'build'].includes(p.mode) ? 'sentence' : 'word')))).flat();
     const progress = await srs.progressMap(p.id, words);
     words = srs.byNeed(words, progress);
     if (n) words = words.slice(0, n);
@@ -498,7 +498,7 @@ async function learnView(topicId, onlyRepeat) {
   const back = `#/topic/${encodeURIComponent(topicId)}`;
   setHeader(topic.title, back);
   const p = state.profile;
-  let words = await db.vocabFor(topicId, p.mode === 'sentences' ? 'sentence' : 'word');
+  let words = await db.vocabFor(topicId, ['sentences', 'build'].includes(p.mode) ? 'sentence' : 'word');
   if (onlyRepeat) {
     const progress = await srs.progressMap(p.id, words);
     const missed = words.filter((w) => srs.needsRepeat(progress.get(w.id)));
