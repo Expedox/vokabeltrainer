@@ -49,6 +49,20 @@ def icon_for(topic):
     key = (topic.get('id', '') + ' ' + topic.get('title_de', '')).lower()
     return next((v for k, v in ICONS.items() if k in key), '📘')
 
+def extras(w):
+    """Optional per word: German context hint and other accepted English answers."""
+    out = {}
+    hint = (w.get('hint') or '').strip()
+    if hint:
+        out['hint'] = hint
+    alt = w.get('alt') or []
+    if isinstance(alt, str):
+        alt = [a for a in alt.split(';')]
+    alt = [a.strip() for a in alt if a and a.strip()]
+    if alt:
+        out['alt'] = alt
+    return out
+
 def main():
     src = sys.argv[1]
     lang = sys.argv[2] if len(sys.argv) > 2 else 'en'
@@ -81,7 +95,8 @@ def main():
                 seen.add(term.lower())
                 note = (w.get('note') or '').strip()
                 icon = (w.get('icon') or '').strip()
-                words.append([term, trans, note, icon] if icon else [term, trans, note] if note else [term, trans])
+                extra = extras(w)
+                words.append([term, trans, note, icon, extra] if extra else [term, trans, note, icon] if icon else [term, trans, note] if note else [term, trans])
             sents = sentences.get((grade, t['id']), [])
             key = (grade, t['title_de'].strip().lower())
             if key in by_key:  # same title twice in one grade: merge
@@ -117,7 +132,8 @@ def main():
                     continue
                 seen.add(term.lower())
                 note = (w.get('note') or '').strip()
-                words.append([term, trans, note] if note else [term, trans])
+                extra = extras(w)
+                words.append([term, trans, note, '', extra] if extra else [term, trans, note] if note else [term, trans])
             sents = []
             for x in t.get('sentences', []) + adult_sents.get((level, t['id']), []):
                 en, de = (x.get(lang) or '').strip(), (x.get('de') or '').strip()

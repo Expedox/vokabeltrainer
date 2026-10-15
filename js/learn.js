@@ -122,6 +122,25 @@ export async function runSession(view, opts) {
   // Example sentence with its own read-aloud button.
   const noteHtml = (w) => (w.note ? `<span class="note">${esc(w.note)}${canSpeak() ? ` <button class="speak-note" data-say="${esc(w.note)}" aria-label="Satz vorlesen">🔊</button>` : ''}</span>` : '');
 
+  // Context for words with several meanings ("beenden": finish or end).
+  // German → English: the data's German hint ("die Hausaufgabe beenden"), else
+  // the example sentence with a gap. English → German: the example sentence.
+  const contextHtml = (w) => {
+    if (englishOn('front')) return w.note ? `<span class="context">${esc(w.note)}</span>` : '';
+    if (w.hint) return `<span class="context">${esc(w.hint)}</span>`;
+    return w.note && gapWord(w.term, w.note) ? `<span class="context">${sentenceHtml(w.term, w.note)}</span>` : '';
+  };
+  // Other answers that are also right: listed in the data ("alt") or a word
+  // in this round with the same meaning.
+  const allWords = [...words, ...(opts.pool ?? [])];
+  const sameKey = (x) => normalize(plain(x, 'de'));
+  function alsoRight(w) {
+    const list = direction === 'de-en'
+      ? [...(w.alt ?? []), ...allWords.filter((o) => o.id !== w.id && !isSentence(o) && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
+      : allWords.filter((o) => o.id !== w.id && !isSentence(o) && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation);
+    return [...new Set(list)];
+  }
+
   function frame(inner) {
     view.innerHTML = `
       <div class="learn">
@@ -156,6 +175,7 @@ export async function runSession(view, opts) {
           ${englishOn('front') ? speakBtn(w) : ''}
           ${pic(w)}
           <span class="word">${esc(front(w))}</span>
+          ${contextHtml(w)}
           <span class="tap">Tippen zum Umdrehen</span>
         </div>
         <div class="face back">
@@ -186,7 +206,9 @@ export async function runSession(view, opts) {
 
   // ---- choice ----
   function renderChoice(w) {
-    const others = shuffle([...words, ...(opts.pool ?? [])].filter((o) => o.id !== w.id && back(o) !== back(w)));
+    const also = new Set(alsoRight(w).map((a) => normalize(plain(a, direction === 'de-en' ? 'en' : 'de'))));
+    const others = shuffle(allWords.filter((o) => o.id !== w.id && !isSentence(o) && back(o) !== back(w)
+      && front(o) !== front(w) && !also.has(normalize(back(o)))));
     const options = [];
     for (const o of others) {
       if (options.length === 3) break;
@@ -199,6 +221,7 @@ export async function runSession(view, opts) {
         ${englishOn('front') ? speakBtn(w) : ''}
         ${pic(w)}
         <span class="word">${esc(front(w))}</span>
+        ${contextHtml(w)}
       </div>
       <div class="options">
         ${options.map((o) => `<button class="btn option" data-id="${esc(o.id)}">${esc(back(o))}</button>`).join('')}
@@ -227,6 +250,7 @@ export async function runSession(view, opts) {
         ${englishOn('front') ? speakBtn(w) : ''}
         ${pic(w)}
         <span class="word">${esc(front(w))}</span>
+        ${contextHtml(w)}
       </div>
       <form class="write-form" autocomplete="off">
         <input class="write-input" name="answer" placeholder="Auf ${lang} …" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Antwort auf ${lang}">
@@ -254,7 +278,11 @@ export async function runSession(view, opts) {
       e.preventDefault();
       if (answered) return;
       if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
-      const res = check(input.value, rawBack(w));
+      let res = check(input.value, rawBack(w));
+      if (!res.ok) {
+        const alt = alsoRight(w).find((a) => check(input.value, a).exact);
+        if (alt) res = { ok: true, exact: true, hint: `Auch richtig. Hier gemeint: ${back(w)}` };
+      }
       settle(strict && res.ok && !res.exact ? { ok: false, hint: res.hint } : res);
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle({ ok: false }); };

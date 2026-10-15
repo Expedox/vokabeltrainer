@@ -489,3 +489,9 @@ mark.good { background: color-mix(in srgb, #3fae5a 28%, transparent); color: inh
 .dialog.hide-text .en, .dialog.hide-text .de { filter: blur(6px); }
 .listen-card { flex-direction: column; gap: 10px; }
 .listen-text { font-size: clamp(1.2rem, 5.5vw, 1.8rem); }
+
+/* Context for words with several meanings */
+.context { display: block; color: var(--muted); font-size: 0.95rem; text-align: center; margin-top: 6px; line-height: 1.35; }
+.context .gap { letter-spacing: 1px; }
+.prompt-card { flex-wrap: wrap; align-content: center; }
+.prompt-card .context, .face .context { flex-basis: 100%; width: 100%; }
