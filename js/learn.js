@@ -141,11 +141,6 @@ export async function runSession(view, opts) {
   const allWords = [...words, ...(opts.pool ?? [])];
   // Same meaning in another topic or grade ("sich beeilen": hurry, hurry up).
   const lexicon = (await db.all('vocab')).filter((v) => !isSentence(v));
-  // Answers the learner marked "Ich hatte recht" earlier: right from now on.
-  const acceptedKey = `accepted:${profile.id}`;
-  const accepted = (await db.getMeta(acceptedKey, {})) ?? {};
-  const wasAccepted = (w, text) => (accepted[w.id] ?? []).some((a) => normalize(a) === normalize(text));
-  let typed = '';
   const sameKey = (x) => normalize(plain(x, 'de'));
   // Could this other word's meaning also be right for w? Then it must not be a
   // wrong option ("to stop": "beenden" next to "aufhören").
@@ -315,9 +310,7 @@ export async function runSession(view, opts) {
       e.preventDefault();
       if (answered) return;
       if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
-      typed = input.value;
       let res = check(input.value, rawBack(w));
-      if (!res.ok && wasAccepted(w, input.value)) res = { ok: true, exact: true };
       // The form in the example sentence's gap ("finished") counts too, and
       // with a gap sentence so do inflected forms of other right answers
       // ("The lesson ___ at eight.": starts, begins).
@@ -387,9 +380,8 @@ export async function runSession(view, opts) {
       if (answered) return;
       if (!input.value.trim()) { input.focus(); return; }
       // Spelling counts letter by letter: "almost" is not enough here.
-      typed = input.value;
       const res = check(input.value, w.term);
-      const exact = normalize(input.value) === normalize(target) || res.exact || wasAccepted(w, input.value);
+      const exact = normalize(input.value) === normalize(target) || res.exact;
       settle(exact, !exact && (res.ok || check(input.value, target).ok) ? 'Ganz knapp, ein Buchstabe stimmt nicht.' : '');
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle(false); };
@@ -534,27 +526,17 @@ export async function runSession(view, opts) {
            : spelled ? `<span class="hint">${esc(hint || '')}</span><span class="spelling">${spelled.split(/\s+/).map((word) => `<span>${[...word].map((c) => `<b>${esc(c)}</b>`).join('')}</span>`).join('')}</span><span class="solution">${esc(plain(w.translation, 'de'))} ${speakBtn(w)}</span>`
            : `<span class="solution">${esc(front(w))} = <b>${esc(back(w))}</b> ${speakBtn(w)}</span>`}
          ${isSentence(w) ? '' : noteHtml(w)}
-         <div class="row center">
-           ${!opts.exam && typed.trim() && !isSentence(w) ? '<button class="btn" id="was-right">Ich hatte recht</button>' : ''}
-           <button class="btn primary" id="next">Weiter</button>
-         </div>`;
+         <button class="btn primary" id="next">Weiter</button>`;
     box.hidden = false;
     wireSpeak(box);
     if (opts.autoSpeak && ok && (englishOn('back') || isSentence(w)) && mode !== 'spell') speak(w.term);
     if (opts.autoSpeak && !ok) speakAll(isSentence(w) ? [w.term] : [w.term, w.note]);
-    const mine = typed.trim();
-    given = ''; why = ''; typed = '';
+    given = ''; why = '';
     if (ok) {
       setTimeout(() => answer(true), hint ? 1700 : isSentence(w) ? 1600 : 900);
     } else {
       const next = box.querySelector('#next');
       next.onclick = () => answer(false);
-      // False alarm: count it as right and accept this answer from now on.
-      box.querySelector('#was-right')?.addEventListener('click', async () => {
-        accepted[w.id] = [...new Set([...(accepted[w.id] ?? []), mine])];
-        await db.setMeta(acceptedKey, accepted);
-        answer(true);
-      });
       next.focus();
       keys = { next: () => answer(false) };
     }
