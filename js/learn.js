@@ -150,6 +150,24 @@ export async function runSession(view, opts) {
     return deW.some((a) => deO.some((b) => related(a, b, 'de')));
   }
 
+  // Three wrong options: from this round first, then words of a nearby grade
+  // (a round of one word still gets a real choice). Never a word that could
+  // also be meant, never the same label twice; verbs go with verbs.
+  const gradeOf = (v) => Number(/^\w+-(\d+)-/.exec(v.topicId ?? '')?.[1] ?? 0);
+  function wrongOptions(w, label, ok = () => true) {
+    const isVerb = (v) => /^to\s/i.test(v.term);
+    const fits = (o) => o.id !== w.id && !isSentence(o) && label(o) !== label(w) && front(o) !== front(w) && !clash(w, o) && ok(o);
+    const near = lexicon.filter((o) => Math.abs(gradeOf(o) - gradeOf(w)) <= 2 && isVerb(o) === isVerb(w));
+    const out = [];
+    for (const list of [shuffle(allWords.slice()), shuffle(near), shuffle(lexicon.slice())]) {
+      for (const o of list) {
+        if (out.length === 3) return out;
+        if (fits(o) && !out.some((x) => label(x) === label(o))) out.push(o);
+      }
+    }
+    return out;
+  }
+
   function alsoRight(w) {
     const list = direction === 'de-en'
       ? [...(w.alt ?? []), ...lexicon.filter((o) => o.id !== w.id && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
@@ -223,13 +241,7 @@ export async function runSession(view, opts) {
   // ---- choice ----
   function renderChoice(w) {
     const also = new Set(alsoRight(w).map((a) => normalize(plain(a, direction === 'de-en' ? 'en' : 'de'))));
-    const others = shuffle(allWords.filter((o) => o.id !== w.id && !isSentence(o) && back(o) !== back(w)
-      && front(o) !== front(w) && !also.has(normalize(back(o))) && !clash(w, o)));
-    const options = [];
-    for (const o of others) {
-      if (options.length === 3) break;
-      if (!options.some((x) => back(x) === back(o))) options.push(o);
-    }
+    const options = wrongOptions(w, back, (o) => !also.has(normalize(back(o))));
     options.push(w);
     shuffle(options);
     frame(`
@@ -376,12 +388,9 @@ export async function runSession(view, opts) {
   // Only heard, not shown: pick the German meaning. Replay normal or slow.
   function renderListen(w) {
     const meaning = (v) => (isSentence(v) ? v.translation : plain(v.translation, 'de'));
-    const others = shuffle([...words, ...(opts.pool ?? [])].filter((o) => o.id !== w.id && isSentence(o) === isSentence(w) && meaning(o) !== meaning(w) && (isSentence(w) || !clash(w, o))));
-    const options = [];
-    for (const o of others) {
-      if (options.length === 3) break;
-      if (!options.some((x) => meaning(x) === meaning(o))) options.push(o);
-    }
+    const options = isSentence(w)
+      ? shuffle(allWords.filter((o) => isSentence(o) && o.id !== w.id && meaning(o) !== meaning(w))).filter((o, k, a) => a.findIndex((x) => meaning(x) === meaning(o)) === k).slice(0, 3)
+      : wrongOptions(w, meaning);
     options.push(w);
     shuffle(options);
     frame(`
