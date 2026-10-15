@@ -15,10 +15,10 @@ import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, plain } from './util.js';
 import { speak, speakAll, canSpeak } from './speech.js';
-import { check } from './check.js';
-import { sentenceHtml, gapWord } from './bee.js';
+import { check, alternatives, bare, normalize } from './check.js';
+import { sentenceHtml, gapWord, inflections } from './bee.js';
+import { synonyms } from './synonyms.js';
 import { isSentence, tokens, sameSentence, diffHtml, tiles } from './sentences.js';
-import { normalize } from './check.js';
 
 export const MODES = [
   { id: 'cards', name: 'Karteikarten', icon: '🃏', hint: 'Umdrehen und selbst bewerten' },
@@ -142,6 +142,7 @@ export async function runSession(view, opts) {
     const list = direction === 'de-en'
       ? [...(w.alt ?? []), ...lexicon.filter((o) => o.id !== w.id && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
       : lexicon.filter((o) => o.id !== w.id && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation);
+    if (direction === 'de-en') for (const a of alternatives(w.term)) list.push(...synonyms(plain(a, 'en')));
     return [...new Set(list)];
   }
 
@@ -283,12 +284,15 @@ export async function runSession(view, opts) {
       if (answered) return;
       if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
       let res = check(input.value, rawBack(w));
-      // The form in the example sentence's gap ("finished") counts too.
+      // The form in the example sentence's gap ("finished") counts too, and
+      // with a gap sentence so do inflected forms of other right answers
+      // ("The lesson ___ at eight.": starts, begins).
       const gap = direction === 'de-en' && gapWord(w.term, w.note);
       if (!res.ok && gap && check(input.value, gap).exact) res = { ok: true, exact: true };
       if (!res.ok) {
-        const alt = alsoRight(w).find((a) => check(input.value, a).exact);
-        if (alt) res = { ok: true, exact: true, hint: `Auch richtig. Hier gemeint: ${back(w)}` };
+        const given = bare(input.value);
+        const alt = alsoRight(w).find((a) => check(input.value, a).exact || (gap && inflections(a).includes(given)));
+        if (alt) res = { ok: true, exact: true, hint: `Auch richtig. Hier gemeint: ${gap || back(w)}` };
       }
       settle(strict && res.ok && !res.exact ? { ok: false, hint: res.hint } : res);
     };

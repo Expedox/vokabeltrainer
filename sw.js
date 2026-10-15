@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v40';
+const VERSION = 'v41';
 const FILES = [
   './',
   'index.html',
@@ -17,6 +17,7 @@ const FILES = [
   'js/db.js',
   'js/seed.js',
   'js/learn.js',
+  'js/synonyms.js',
   'js/util.js',
   'js/parents.js',
   'js/io.js',

@@ -24,13 +24,39 @@ const IRREGULAR = {
   person: ['people'], knife: ['knives'], leaf: ['leaves'], wife: ['wives'], life: ['lives'], half: ['halves'],
 };
 
-// Likely inflected forms of one English word.
+// Likely inflected forms of one English word (no made-up forms like "begined").
 function forms(word) {
   const w = word.toLowerCase();
-  const out = new Set([w, `${w}s`, `${w}es`, `${w}ed`, `${w}d`, `${w}ing`, `${w}er`, `${w}est`, ...(IRREGULAR[w] ?? [])]);
-  if (/[^aeiou]y$/.test(w)) ['ies', 'ied', 'ier', 'iest'].forEach((s) => out.add(w.slice(0, -1) + s));
-  if (/e$/.test(w)) ['ing', 'ed', 'er', 'est'].forEach((s) => out.add(w.slice(0, -1) + s));
-  if (/[^aeiou][aeiou][bdgklmnprt]$/.test(w)) ['ed', 'ing', 'er', 'est'].forEach((s) => out.add(w + w.at(-1) + s));
+  const irr = IRREGULAR[w];
+  const out = new Set([w, ...(irr ?? [])]);
+  const add = (...xs) => xs.forEach((x) => out.add(x));
+  if (/[^aeiou]y$/.test(w)) {
+    const st = w.slice(0, -1);
+    add(`${st}ies`, `${w}ing`, `${st}ier`, `${st}iest`);
+    if (!irr) add(`${st}ied`);
+  } else if (/e$/.test(w)) {
+    add(`${w}s`, `${w.slice(0, -1)}ing`, `${w}r`, `${w}st`);
+    if (!irr) add(`${w}d`);
+  } else {
+    add(/(s|x|z|ch|sh|o)$/.test(w) ? `${w}es` : `${w}s`, `${w}ing`, `${w}er`, `${w}est`);
+    if (!irr) add(`${w}ed`);
+    if (/[^aeiou][aeiou][bdgklmnprt]$/.test(w)) {
+      add(`${w}${w.at(-1)}ing`, `${w}${w.at(-1)}er`, `${w}${w.at(-1)}est`);
+      if (!irr) add(`${w}${w.at(-1)}ed`);
+    }
+  }
+  return [...out];
+}
+
+// A phrase with its first or last word inflected: "to begin" → begins, began …
+export function inflections(phrase) {
+  const parts = phrase.toLowerCase().replace(/\(.*?\)/g, ' ').replace(/^to\s+/, '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return [];
+  const out = new Set([parts.join(' ')]);
+  for (const f of forms(parts[0])) out.add([f, ...parts.slice(1)].join(' '));
+  if (parts.length > 1 && !/^(up|down|out|in|on|off|away|back|over|around|along|for|after|with|to|at)$/.test(parts.at(-1))) {
+    for (const f of forms(parts.at(-1))) out.add([...parts.slice(0, -1), f].join(' '));
+  }
   return [...out];
 }
 
