@@ -17,7 +17,7 @@ import { esc, plain } from './util.js';
 import { speak, speakAll, canSpeak } from './speech.js';
 import { check, alternatives, bare, normalize } from './check.js';
 import { sentenceHtml, gapWord, inflections } from './bee.js';
-import { synonyms } from './synonyms.js';
+import { synonyms, related } from './synonyms.js';
 import { isSentence, tokens, sameSentence, diffHtml, tiles } from './sentences.js';
 
 export const MODES = [
@@ -138,6 +138,18 @@ export async function runSession(view, opts) {
   // Same meaning in another topic or grade ("sich beeilen": hurry, hurry up).
   const lexicon = (await db.all('vocab')).filter((v) => !isSentence(v));
   const sameKey = (x) => normalize(plain(x, 'de'));
+  // Could this other word's meaning also be right for w? Then it must not be a
+  // wrong option ("to stop": "beenden" next to "aufhören").
+  const meanings = (text, lang) => alternatives(text).map((a) => bare(plain(a, lang))).filter(Boolean);
+  function clash(w, o) {
+    const enW = [...meanings(w.term, 'en'), ...(w.alt ?? []).map((a) => bare(a))];
+    const enO = [...meanings(o.term, 'en'), ...(o.alt ?? []).map((a) => bare(a))];
+    if (enW.some((a) => enO.some((b) => related(a, b, 'en')))) return true;
+    const deW = meanings(w.translation, 'de');
+    const deO = meanings(o.translation, 'de');
+    return deW.some((a) => deO.some((b) => related(a, b, 'de')));
+  }
+
   function alsoRight(w) {
     const list = direction === 'de-en'
       ? [...(w.alt ?? []), ...lexicon.filter((o) => o.id !== w.id && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
@@ -212,7 +224,7 @@ export async function runSession(view, opts) {
   function renderChoice(w) {
     const also = new Set(alsoRight(w).map((a) => normalize(plain(a, direction === 'de-en' ? 'en' : 'de'))));
     const others = shuffle(allWords.filter((o) => o.id !== w.id && !isSentence(o) && back(o) !== back(w)
-      && front(o) !== front(w) && !also.has(normalize(back(o)))));
+      && front(o) !== front(w) && !also.has(normalize(back(o))) && !clash(w, o)));
     const options = [];
     for (const o of others) {
       if (options.length === 3) break;
@@ -364,7 +376,7 @@ export async function runSession(view, opts) {
   // Only heard, not shown: pick the German meaning. Replay normal or slow.
   function renderListen(w) {
     const meaning = (v) => (isSentence(v) ? v.translation : plain(v.translation, 'de'));
-    const others = shuffle([...words, ...(opts.pool ?? [])].filter((o) => o.id !== w.id && isSentence(o) === isSentence(w) && meaning(o) !== meaning(w)));
+    const others = shuffle([...words, ...(opts.pool ?? [])].filter((o) => o.id !== w.id && isSentence(o) === isSentence(w) && meaning(o) !== meaning(w) && (isSentence(w) || !clash(w, o))));
     const options = [];
     for (const o of others) {
       if (options.length === 3) break;
