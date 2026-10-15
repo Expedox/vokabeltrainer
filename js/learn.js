@@ -149,8 +149,8 @@ export async function runSession(view, opts) {
     const enW = [...meanings(w.term, 'en'), ...(w.alt ?? []).map((a) => bare(a))];
     const enO = [...meanings(o.term, 'en'), ...(o.alt ?? []).map((a) => bare(a))];
     if (enW.some((a) => enO.some((b) => related(a, b, 'en')))) return true;
-    const deW = meanings(w.translation, 'de');
-    const deO = meanings(o.translation, 'de');
+    const deW = [...meanings(w.translation, 'de'), ...(w.deAlt ?? []).map((a) => bare(a))];
+    const deO = [...meanings(o.translation, 'de'), ...(o.deAlt ?? []).map((a) => bare(a))];
     return deW.some((a) => deO.some((b) => related(a, b, 'de')));
   }
 
@@ -175,7 +175,7 @@ export async function runSession(view, opts) {
   function alsoRight(w) {
     const list = direction === 'de-en'
       ? [...(w.alt ?? []), ...lexicon.filter((o) => o.id !== w.id && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
-      : lexicon.filter((o) => o.id !== w.id && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation);
+      : [...(w.deAlt ?? []), ...lexicon.filter((o) => o.id !== w.id && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation)];
     if (direction === 'de-en') for (const a of alternatives(w.term)) list.push(...synonyms(plain(a, 'en')));
     return [...new Set(list)];
   }

@@ -64,6 +64,9 @@ def extras(w):
     alt = [a.strip() for a in alt if a and a.strip()]
     if alt:
         out['alt'] = alt
+    de_alt = [a.strip() for a in (w.get('de_alt') or []) if a and a.strip()]
+    if de_alt:
+        out['de_alt'] = de_alt
     return out
 
 def main():
