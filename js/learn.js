@@ -14,7 +14,7 @@
 import * as db from './db.js';
 import * as srs from './srs.js';
 import { esc, plain } from './util.js';
-import { speak, speakAll, canSpeak } from './speech.js';
+import { speak, speakAll, canSpeak, stop, whenDone } from './speech.js';
 import { check, alternatives, bare, normalize } from './check.js';
 import { sentenceHtml, gapWord, inflections } from './bee.js';
 import { synonyms, related } from './synonyms.js';
@@ -534,7 +534,9 @@ export async function runSession(view, opts) {
     if (opts.autoSpeak && !ok) speakAll(isSentence(w) ? [w.term] : [w.term, w.note]);
     given = ''; why = '';
     if (ok) {
-      setTimeout(() => answer(true), hint ? 1700 : isSentence(w) ? 1600 : 900);
+      // Go on after the pause, but never cut off what is being read out.
+      const pause = new Promise((r) => setTimeout(r, hint ? 1700 : isSentence(w) ? 1600 : 900));
+      Promise.all([pause, pause.then(() => whenDone(10000))]).then(() => answer(true));
     } else {
       const next = box.querySelector('#next');
       next.onclick = () => answer(false);
@@ -545,6 +547,7 @@ export async function runSession(view, opts) {
 
   async function answer(ok) {
     if (busy || !view.querySelector('.learn')) return;
+    stop();
     busy = true;
     const w = queue.shift();
     const p = progress.get(w.id);
