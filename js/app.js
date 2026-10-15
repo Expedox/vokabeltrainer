@@ -563,6 +563,10 @@ async function settingsView() {
         <input type="checkbox" name="speak"${p.autoSpeak ? ' checked' : ''}>
         <span><strong>Englisch automatisch vorlesen</strong><small>Wörter beim Anzeigen, beim Umdrehen und bei Fehlern auch den Beispielsatz. Mit 🔊 kann man alles selbst anhören.</small></span>
       </label>
+      <label class="choice">
+        <input type="checkbox" name="contextHint"${p.contextHint !== false ? ' checked' : ''}>
+        <span><strong>Satz als Hilfe zeigen</strong><small>Beim Abfragen steht der Beispielsatz mit einer Lücke unter dem Wort, damit klar ist, was gemeint ist.</small></span>
+      </label>
     </section>
     <section class="card">
       <h2>Sprache</h2>
@@ -585,6 +589,7 @@ async function settingsView() {
   view.querySelectorAll('input[name=theme]').forEach((el) => el.addEventListener('change', async () => {
     p.theme = el.value; await profiles.save(p); applyTheme();
   }));
+  view.querySelector('input[name=contextHint]').addEventListener('change', async (e) => { p.contextHint = e.target.checked; await profiles.save(p); });
   view.querySelector('input[name=speak]').addEventListener('change', async (e) => {
     p.autoSpeak = e.target.checked; await profiles.save(p);
   });

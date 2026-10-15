@@ -125,10 +125,12 @@ export async function runSession(view, opts) {
   // Context for words with several meanings ("beenden": finish or end).
   // German → English: the data's German hint ("die Hausaufgabe beenden"), else
   // the example sentence with a gap. English → German: the example sentence.
+  // Setting "Satz als Hilfe zeigen" (on unless switched off).
   const contextHtml = (w) => {
+    if (profile.contextHint === false) return w.hint && !englishOn('front') ? `<span class="context">${esc(w.hint)}</span>` : '';
     if (englishOn('front')) return w.note ? `<span class="context">${esc(w.note)}</span>` : '';
-    if (w.hint) return `<span class="context">${esc(w.hint)}</span>`;
-    return w.note && gapWord(w.term, w.note) ? `<span class="context">${sentenceHtml(w.term, w.note)}</span>` : '';
+    const sentence = w.note ? `<span class="context">${sentenceHtml(w.term, w.note)}</span>` : '';
+    return w.hint ? `<span class="context">${esc(w.hint)}</span>${sentence}` : sentence;
   };
   // Other answers that are also right: listed in the data ("alt") or a word
   // in this round with the same meaning.
@@ -281,6 +283,9 @@ export async function runSession(view, opts) {
       if (answered) return;
       if (!input.value.trim() || /^to$/i.test(input.value.trim())) { input.focus(); return; }
       let res = check(input.value, rawBack(w));
+      // The form in the example sentence's gap ("finished") counts too.
+      const gap = direction === 'de-en' && gapWord(w.term, w.note);
+      if (!res.ok && gap && check(input.value, gap).exact) res = { ok: true, exact: true };
       if (!res.ok) {
         const alt = alsoRight(w).find((a) => check(input.value, a).exact);
         if (alt) res = { ok: true, exact: true, hint: `Auch richtig. Hier gemeint: ${back(w)}` };
