@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so devices fetch new files.
-const VERSION = 'v44';
+const VERSION = 'v45';
 const FILES = [
   './',
   'index.html',
