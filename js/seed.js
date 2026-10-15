@@ -24,9 +24,10 @@ export async function seed(lang) {
   for (const t of bundle.topics) {
     const topicId = `${lang}-${t.grade}-${slug(t.title)}`;
     topics.push({ id: topicId, lang, grade: t.grade, title: t.title, icon: t.icon, builtin: true });
-    // Optional 5th field: { hint: German context, alt: other right English answers }.
+    // Optional 5th field: { hint: German context, hint_de: German sentence with a gap
+    // for the word ("Ich lebe auf dem ___."), alt: other right English answers }.
     for (const [term, translation, note = '', icon = '', extra = {}] of t.words) {
-      vocab.push({ id: `${topicId}:${slug(term)}`, topicId, term, translation, note, icon, ...(extra.hint ? { hint: extra.hint } : {}), ...(extra.alt?.length ? { alt: extra.alt } : {}), builtin: true });
+      vocab.push({ id: `${topicId}:${slug(term)}`, topicId, term, translation, note, icon, ...(extra.hint ? { hint: extra.hint } : {}), ...(extra.hint_de ? { hintDe: extra.hint_de } : {}), ...(extra.alt?.length ? { alt: extra.alt } : {}), builtin: true });
     }
     for (const [en, de, distractors = [], why = []] of t.sentences ?? []) {
       vocab.push({ id: `${topicId}:s:${slug(en).slice(0, 80)}`, topicId, kind: 'sentence', term: en, translation: de, distractors, why, builtin: true });

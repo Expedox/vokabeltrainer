@@ -126,7 +126,11 @@ export async function runSession(view, opts) {
   // German → English: the data's German hint ("die Hausaufgabe beenden"), else
   // the example sentence with a gap. English → German: the example sentence.
   // Setting "Satz als Hilfe zeigen" (on unless switched off).
+  const gapDe = (t) => esc(t).replace(/_{2,}/, '<span class="gap">_____</span>');
   const contextHtml = (w) => {
+    // German sentence with a gap for the German word: helps both directions
+    // and gives nothing away.
+    if (w.hintDe) return `<span class="context">${gapDe(w.hintDe)}</span>`;
     if (profile.contextHint === false) return w.hint && !englishOn('front') ? `<span class="context">${esc(w.hint)}</span>` : '';
     if (englishOn('front')) return w.note ? `<span class="context">${esc(w.note)}</span>` : '';
     const sentence = w.note ? `<span class="context">${sentenceHtml(w.term, w.note)}</span>` : '';

@@ -55,6 +55,9 @@ def extras(w):
     hint = (w.get('hint') or '').strip()
     if hint:
         out['hint'] = hint
+    hint_de = (w.get('hint_de') or '').strip()
+    if hint_de:
+        out['hint_de'] = hint_de
     alt = w.get('alt') or []
     if isinstance(alt, str):
         alt = [a for a in alt.split(';')]
