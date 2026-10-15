@@ -14,6 +14,7 @@ const GROUPS = [
   ['mum', 'mom', 'mummy', 'mommy'], ['rucksack', 'backpack'], ['dustbin', 'bin', 'trash can'], ['fridge', 'refrigerator'],
   ['tv', 'television'], ['bike', 'bicycle'], ['phone', 'telephone'], ['photo', 'photograph', 'picture'],
   ['plane', 'airplane', 'aeroplane'], ['kid', 'child'], ['kids', 'children'], ['hi', 'hello'], ['bye', 'goodbye'],
+  ['to ship', 'to send', 'to post', 'to mail'], ['to book', 'to reserve'], ['to phone', 'to call', 'to ring'], ['to fix', 'to repair', 'to mend'],
   ['maybe', 'perhaps'], ['shout', 'yell'], ['let', 'allow'], ['answer', 'reply'], ['quiet', 'silent'],
 ];
 
@@ -21,9 +22,12 @@ const index = new Map();
 for (const g of GROUPS) for (const w of g) index.set(w, g);
 
 // Other words with the same meaning, without "to"/articles.
+// Entries with "to" only match verbs ("to ship" = send, but not "ship" = Schiff).
 export function synonyms(word) {
-  const key = word.toLowerCase().replace(/^(to|a|an|the)\s+/, '').trim();
-  return (index.get(key) ?? []).filter((w) => w !== key);
+  const full = word.toLowerCase().trim();
+  const key = full.replace(/^(to|a|an|the)\s+/, '');
+  const strip = (w) => w.replace(/^to\s+/, '');
+  return (index.get(full) ?? index.get(key) ?? []).map(strip).filter((w) => w !== key);
 }
 
 // Close meanings: never shown together as answer and wrong option, because
@@ -52,7 +56,7 @@ const RELATED_DE = [
 ];
 const relIndex = (groups) => {
   const m = new Map();
-  for (const g of groups) for (const w of g) m.set(w, [...(m.get(w) ?? []), g]);
+  for (const g of groups) for (const w of g.map((x) => x.replace(/^to\s+/, ''))) m.set(w, [...(m.get(w) ?? []), g.map((x) => x.replace(/^to\s+/, ''))]);
   return m;
 };
 const relEn = relIndex([...GROUPS, ...RELATED_EN]);
