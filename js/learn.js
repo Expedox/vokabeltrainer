@@ -133,11 +133,13 @@ export async function runSession(view, opts) {
   // Other answers that are also right: listed in the data ("alt") or a word
   // in this round with the same meaning.
   const allWords = [...words, ...(opts.pool ?? [])];
+  // Same meaning in another topic or grade ("sich beeilen": hurry, hurry up).
+  const lexicon = (await db.all('vocab')).filter((v) => !isSentence(v));
   const sameKey = (x) => normalize(plain(x, 'de'));
   function alsoRight(w) {
     const list = direction === 'de-en'
-      ? [...(w.alt ?? []), ...allWords.filter((o) => o.id !== w.id && !isSentence(o) && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
-      : allWords.filter((o) => o.id !== w.id && !isSentence(o) && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation);
+      ? [...(w.alt ?? []), ...lexicon.filter((o) => o.id !== w.id && sameKey(o.translation) === sameKey(w.translation)).map((o) => o.term)]
+      : lexicon.filter((o) => o.id !== w.id && normalize(plain(o.term, 'en')) === normalize(plain(w.term, 'en'))).map((o) => o.translation);
     return [...new Set(list)];
   }
 

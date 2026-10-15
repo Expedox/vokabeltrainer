@@ -12,8 +12,24 @@ export function normalize(s) {
 
 export const bare = (s) => normalize(s).replace(ARTICLES, '').trim();
 
+// "hurry (up)" → "hurry (up)" and "hurry up": the part in brackets is optional.
 export function alternatives(expected) {
-  return expected.split(/\s*[/;,]\s*/).map((a) => a.trim()).filter(Boolean);
+  const list = expected.split(/\s*[/;,]\s*/).map((a) => a.trim()).filter(Boolean);
+  return [...new Set(list.flatMap((a) => (/\(.*?\)/.test(a) ? [a, a.replace(/[()]/g, '').replace(/\s+/g, ' ')] : [a])))];
+}
+
+// British and American spelling count the same (colour/color, centre/center,
+// organise/organize, travelled/traveled, grey/gray …).
+const AE = { grey: 'gray', programme: 'program', tyre: 'tire', mum: 'mom', practise: 'practice', licence: 'license', defence: 'defense', offence: 'offense', catalogue: 'catalog', dialogue: 'dialog', pyjamas: 'pajamas', jewellery: 'jewelry', plough: 'plow', cosy: 'cozy', sceptical: 'skeptical', aeroplane: 'airplane', moustache: 'mustache', cheque: 'check', kerb: 'curb', mould: 'mold', manoeuvre: 'maneuver', aluminium: 'aluminum', anaesthetic: 'anesthetic', encyclopaedia: 'encyclopedia', enrol: 'enroll', fulfil: 'fulfill', judgement: 'judgment', ageing: 'aging' };
+export function spelling(s) {
+  return s.split(' ').map((w) => {
+    if (AE[w]) return AE[w];
+    if (w.length > 5) w = w.replace(/our(s|ed|ing|ite|ites|able)?$/, 'or$1');
+    w = w.replace(/^(\w{3,})is(e|es|ed|ing|ation|ations)$/, '$1iz$2').replace(/^(\w{3,})ys(e|es|ed|ing)$/, '$1yz$2');
+    w = w.replace(/^(\w{3,})([tb])re(s)?$/, '$1$2er$3');
+    w = w.replace(/^(\w{3,}[aeiou])ll(ed|ing|er|ers)$/, '$1l$2');
+    return w;
+  }).join(' ');
 }
 
 export function distance(a, b) {
@@ -39,6 +55,7 @@ export function check(input, expected) {
     if (given === want) return { ok: true, exact: true };
     // Articles and "to" are optional: "Hund" = "der Hund", "go" = "to go".
     if (bare(given) === bare(alt)) return { ok: true, exact: true };
+    if (spelling(bare(given)) === spelling(bare(alt))) return { ok: true, exact: true };
     const b = bare(alt);
     if (b.length >= 5 && distance(bare(given), b) === 1) return { ok: true, exact: false, hint: `Fast! Richtig geschrieben: ${alt.replace(ARTICLES, '')}` };
   }
