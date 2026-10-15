@@ -324,13 +324,14 @@ export async function runSession(view, opts) {
       settle(strict && res.ok && !res.exact ? { ok: false, hint: res.hint } : res);
     };
     view.querySelector('#giveup').onclick = () => { if (!answered) settle({ ok: false }); };
-    // Tip: first letter, then the rest as blanks ("H _ _ _"); a second tap shows one more letter.
+    // Tip: first letter, then the rest as blanks ("H _ _ _"); each tap shows one
+    // more letter, but never more than half the word.
     let shown = 0;
     view.querySelector('#tip').onclick = () => {
       const target = back(w).split(/\s*[/;,]\s*/)[0];
-      shown = Math.min(shown + 1, Math.max(1, target.length - 1));
+      shown = Math.min(shown + 1, Math.max(1, Math.floor(target.length / 2)));
       const tip = form.querySelector('.tip');
-      tip.textContent = [...target].map((c, i) => (i < shown || c === ' ' ? c : '_')).join(' ');
+      tip.textContent = `Tipp: ${[...target].map((c, i) => (i < shown || c === ' ' ? c : '_')).join(' ')}`;
       tip.hidden = false;
       input.focus();
     };
