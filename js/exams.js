@@ -96,7 +96,7 @@ export async function examFormView(ctx, childId, examId) {
           <select name="mode">
             <option value="write"${exam.mode === 'write' ? ' selected' : ''}>Schreiben (wie bei der Schularbeit)</option>
             <option value="choice"${exam.mode === 'choice' ? ' selected' : ''}>Auswählen</option>
-            <option value="sentences"${exam.mode === 'sentences' ? ' selected' : ''}>Sätze (richtigen Satz finden und bauen)</option>
+            <option value="sentences"${exam.mode === 'sentences' ? ' selected' : ''}>Sätze (richtigen Satz finden)</option>
             <option value="build"${exam.mode === 'build' ? ' selected' : ''}>Satz bauen (aus Wortbausteinen)</option>
           </select>
         </label>

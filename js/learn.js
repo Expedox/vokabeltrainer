@@ -3,8 +3,8 @@
 //   choice – pick the right answer out of four
 //   write  – type the answer (tolerant check, see check.js)
 //   spell  – spelling bee: hear word and example sentence, type the English word exactly
-//   sentences – pick the right English sentence out of four, later build it from tiles
-//   build     – build every sentence from word tiles (with trap words) right away
+//   sentences – pick the right English sentence out of four
+//   build     – build the sentence from word tiles (with trap words)
 //   listen – the English word or sentence is only read out; pick its meaning
 // Sentence items (kind: 'sentence') are always shown as sentence exercises,
 // e.g. when they turn up in "Heute wiederholen".
@@ -25,7 +25,7 @@ export const MODES = [
   { id: 'choice', name: 'Auswählen', icon: '🔘', hint: 'Richtige Antwort antippen' },
   { id: 'write', name: 'Schreiben', icon: '✍️', hint: 'Wort eintippen' },
   { id: 'spell', name: 'Buchstabieren', icon: '🐝', hint: 'Hören und richtig schreiben', english: true },
-  { id: 'sentences', name: 'Sätze', icon: '💬', hint: 'Richtigen Satz finden, dann selbst bauen', english: true },
+  { id: 'sentences', name: 'Sätze', icon: '💬', hint: 'Den richtigen Satz unter vier finden', english: true },
   { id: 'build', name: 'Satz bauen', icon: '🧩', hint: 'Satz aus Wortbausteinen bauen, Vorsicht vor Fallen', english: true },
   { id: 'listen', name: 'Hören', icon: '👂', hint: 'Nur hören, dann die Bedeutung wählen', english: true },
 ];
@@ -163,9 +163,8 @@ export async function runSession(view, opts) {
     const w = queue[0];
     if (mode === 'listen' && canSpeak()) renderListen(w);
     else if (isSentence(w)) {
-      // "Satz bauen": always tiles. "Sätze": pick from four first, tiles once known.
-      const buildable = tokens(w.term).length <= 14;
-      if (buildable && (mode === 'build' || progress.get(w.id).box >= 1)) renderBuild(w); else renderPick(w);
+      // "Satz bauen": tiles. Everywhere else: pick the right one out of four.
+      if (mode === 'build' && tokens(w.term).length <= 14) renderBuild(w); else renderPick(w);
     } else if (mode === 'choice' || mode === 'sentences' || mode === 'build') renderChoice(w);
     else if (mode === 'write') renderWrite(w);
     else if (mode === 'spell') renderSpell(w);
